@@ -1,0 +1,78 @@
+from __future__ import annotations
+
+import json
+from dataclasses import asdict
+from pathlib import Path
+from typing import Iterable
+
+from .models import ChatMessage, Persona
+
+
+def export_session(
+    session_dir: Path,
+    persona: Persona,
+    messages: Iterable[ChatMessage],
+) -> tuple[Path, Path]:
+    session_dir.mkdir(parents=True, exist_ok=True)
+    messages = list(messages)
+    timestamp = messages[-1].created_at.strftime("%Y%m%d-%H%M%S") if messages else "empty"
+    base_name = f"{timestamp}-{slugify(persona.name)}"
+    json_path = session_dir / f"{base_name}.json"
+    markdown_path = session_dir / f"{base_name}.md"
+
+    payload = {
+        "persona": {
+            "name": persona.name,
+            "age": persona.age,
+            "relationship_mode": persona.relationship_mode,
+            "background": persona.background,
+            "situation": persona.situation,
+            "texting_style": persona.texting_style,
+            "interests": persona.interests,
+            "soft_spots": persona.soft_spots,
+            "boundaries": persona.boundaries,
+        },
+        "messages": [
+            {
+                "role": message.role,
+                "text": message.text,
+                "created_at": message.created_at.isoformat(),
+            }
+            for message in messages
+        ],
+    }
+    json_path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    markdown_path.write_text(
+        render_markdown(persona=persona, messages=messages),
+        encoding="utf-8",
+    )
+    return json_path, markdown_path
+
+
+def render_markdown(persona: Persona, messages: list[ChatMessage]) -> str:
+    lines = [
+        f"# Session with {persona.name}",
+        "",
+        f"- Relationship mode: {persona.relationship_mode}",
+        f"- Situation: {persona.situation}",
+        "",
+        "## Transcript",
+        "",
+    ]
+    for message in messages:
+        timestamp = message.created_at.strftime("%H:%M:%S")
+        lines.append(f"**{message.role}** `{timestamp}`")
+        lines.append("")
+        lines.append(message.text)
+        lines.append("")
+    return "\n".join(lines).strip() + "\n"
+
+
+def slugify(value: str) -> str:
+    normalized = "".join(char.lower() if char.isalnum() else "-" for char in value)
+    while "--" in normalized:
+        normalized = normalized.replace("--", "-")
+    return normalized.strip("-") or "session"

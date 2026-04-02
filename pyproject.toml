@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "girlfriend-generator"
+version = "0.1.0"
+description = "A CLI-first romance simulation chat for vibe coding breaks."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = ["rich>=14,<15"]
+
+[project.optional-dependencies]
+llm = ["openai>=1.0.0", "anthropic>=0.40.0"]
+personas = ["PyYAML>=6.0.0"]
+dev = ["pytest>=9,<10"]
+
+[project.scripts]
+girlfriend-generator = "girlfriend_generator.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

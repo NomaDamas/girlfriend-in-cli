@@ -1,0 +1,56 @@
+from datetime import timedelta
+from pathlib import Path
+
+from girlfriend_generator.engine import ConversationSession, utc_now
+from girlfriend_generator.personas import load_persona
+from girlfriend_generator.providers import HeuristicProvider
+
+
+def test_user_reply_clears_pending_nudge() -> None:
+    persona = load_persona(Path("personas/yu-na-girlfriend.json"))
+    session = ConversationSession(persona=persona)
+    start = utc_now()
+    session.bootstrap(now=start)
+
+    assert session.awaiting_user_reply is True
+    assert session.seconds_until_nudge(start) == persona.nudge_policy.idle_after_seconds
+
+    session.add_user_message("방금 빌드 끝났어. 이제 너한테 집중 가능.")
+
+    assert session.awaiting_user_reply is False
+    assert session.nudge_due_at is None
+    assert session.nudge_count == 0
+
+
+def test_nudge_due_and_consumed_once() -> None:
+    persona = load_persona(Path("personas/han-seo-jin-crush.json"))
+    session = ConversationSession(persona=persona)
+    start = utc_now()
+    session.bootstrap(now=start)
+    due_time = start + timedelta(seconds=persona.nudge_policy.idle_after_seconds)
+
+    assert session.nudge_due(due_time) is True
+
+    text = session.consume_nudge(now=due_time)
+
+    assert text == persona.nudge_policy.templates[0]
+    assert session.nudge_count == 1
+    assert session.awaiting_user_reply is True
+
+
+def test_heuristic_provider_respects_typing_range() -> None:
+    persona = load_persona(Path("personas/han-seo-jin-crush.json"))
+    session = ConversationSession(persona=persona)
+    session.bootstrap()
+    provider = HeuristicProvider()
+
+    reply = provider.generate_reply(
+        persona=persona,
+        history=session.recent_history(),
+        user_text="오늘 너한테 뭐라고 보내야 센스 있어 보일까?",
+        affection_score=session.affection_score,
+    )
+
+    assert reply.text
+    assert 0.18 <= reply.typing_seconds <= 1.05
+    assert "turbo-heuristic" in reply.trace_note

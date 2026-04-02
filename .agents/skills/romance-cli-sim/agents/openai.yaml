@@ -1,0 +1,7 @@
+interface:
+  display_name: "Romance CLI Simulator"
+  short_description: "Build and tune the terminal-only romance simulation app"
+  brand_color: "#EC4899"
+  default_prompt: "Improve the CLI romance simulator while preserving the ECC trace panel and local-only Codex setup"
+policy:
+  allow_implicit_invocation: true

@@ -13,3 +13,9 @@ This repository vendors project-local assets from `affaan-m/everything-claude-co
 
 - These instructions apply only inside this repository.
 - For Codex-specific skill discovery and usage notes, also read `.codex/AGENTS.md`.
+
+## Ralph Evidence
+
+- When running Ouroboros/Ralph-style verification in this repository, prefer repo-local evidence files under `artifacts/ouroboros/latest/`.
+- Treat `artifacts/ouroboros/latest/test-output.txt` as the canonical condensed `test_output` artifact.
+- When summarizing verification, prefer direct command/output evidence over prose-only claims.

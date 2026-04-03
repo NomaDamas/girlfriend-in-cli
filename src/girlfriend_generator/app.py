@@ -111,6 +111,13 @@ class RawKeyboard:
 
 def run_chat_app(config: AppConfig) -> int:
     console = Console()
+    if not _supports_interactive_chat():
+        console.print(
+            "Interactive chat requires a TTY. Run `girlfriend-generator` in a real terminal.",
+            style="bold red",
+        )
+        return 1
+
     persona = load_persona(config.persona_path)
     provider = build_provider(
         ProviderConfig(
@@ -238,6 +245,7 @@ def run_chat_app(config: AppConfig) -> int:
                         persona=persona,
                         provider=provider,
                         pending_job=pending_job,
+                        pending_delivery=pending_delivery,
                         voice_input=voice_input,
                         voice_output_available=voice_output.name != "off",
                         voice_output_enabled=voice_output_enabled,
@@ -354,6 +362,7 @@ def _handle_key(
     persona: Persona,
     provider: Any,
     pending_job: BackgroundJob | None,
+    pending_delivery: PendingDelivery | None,
     voice_input: Any,
     voice_output_available: bool,
     voice_output_enabled: bool,
@@ -391,8 +400,10 @@ def _handle_key(
                 "voice_output_enabled": voice_output_enabled,
                 "quit": False,
             }
-        if pending_job is not None:
-            session.add_system_message("Wait for the current reply job to finish first.")
+        if _assistant_busy(pending_job, pending_delivery):
+            session.add_system_message(
+                "Wait for the current assistant turn to finish first."
+            )
             return {
                 "draft": draft,
                 "status_line": "Assistant is still busy.",
@@ -407,6 +418,7 @@ def _handle_key(
                 session=session,
                 provider=provider,
                 pending_job=pending_job,
+                pending_delivery=pending_delivery,
                 voice_input=voice_input,
                 voice_output_available=voice_output_available,
                 voice_output_enabled=voice_output_enabled,
@@ -466,6 +478,7 @@ def _handle_command(
     session: ConversationSession,
     provider: Any,
     pending_job: BackgroundJob | None,
+    pending_delivery: PendingDelivery | None,
     voice_input: Any,
     voice_output_available: bool,
     voice_output_enabled: bool,
@@ -505,7 +518,10 @@ def _handle_command(
         }
     if lowered == "/status":
         session.add_system_message(
-            f"affection={session.affection_score}/100, nudge_in={session.seconds_until_nudge() or '-'}, pending_job={pending_job.kind if pending_job else 'idle'}"
+            "affection="
+            f"{session.affection_score}/100, "
+            f"nudge_in={session.seconds_until_nudge() or '-'}, "
+            f"pending_activity={_pending_activity_kind(pending_job, pending_delivery)}"
         )
         return {
             "draft": "",
@@ -568,11 +584,13 @@ def _handle_command(
             "quit": False,
         }
     if lowered == "/listen":
-        if pending_job is not None:
-            session.add_system_message("Wait for the current background job to finish first.")
+        if _assistant_busy(pending_job, pending_delivery):
+            session.add_system_message(
+                "Wait for the current assistant turn to finish first."
+            )
             return {
                 "draft": "",
-                "status_line": "Background job already running.",
+                "status_line": "Assistant is still busy.",
                 "pending_job": pending_job,
                 "show_trace": show_trace,
                 "voice_output_enabled": voice_output_enabled,
@@ -777,3 +795,14 @@ def _pending_activity_kind(
     if pending_delivery is not None:
         return pending_delivery.kind
     return "idle"
+
+
+def _assistant_busy(
+    pending_job: BackgroundJob | None,
+    pending_delivery: PendingDelivery | None,
+) -> bool:
+    return pending_job is not None or pending_delivery is not None
+
+
+def _supports_interactive_chat() -> bool:
+    return sys.stdin.isatty() and sys.stdout.isatty()

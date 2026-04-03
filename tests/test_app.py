@@ -2,7 +2,16 @@ from pathlib import Path
 
 from rich.console import Console
 
-from girlfriend_generator.app import _finish_job, _handle_command, _render_screen, _render_trace
+from girlfriend_generator.app import (
+    AppConfig,
+    PendingDelivery,
+    _finish_job,
+    _handle_command,
+    _handle_key,
+    _render_screen,
+    _render_trace,
+    run_chat_app,
+)
 from girlfriend_generator.engine import ConversationSession
 from girlfriend_generator.models import ProviderReply, RuntimeTrace
 from girlfriend_generator.personas import load_persona
@@ -29,6 +38,7 @@ def test_listen_command_requires_configured_voice_input(tmp_path: Path) -> None:
         session=session,
         provider=object(),
         pending_job=None,
+        pending_delivery=None,
         voice_input=DisabledVoiceInput(),
         voice_output_available=False,
         voice_output_enabled=False,
@@ -61,6 +71,7 @@ def test_listen_command_starts_background_job_when_voice_input_is_configured(
         session=session,
         provider=object(),
         pending_job=None,
+        pending_delivery=None,
         voice_input=FakeVoiceInput(),
         voice_output_available=False,
         voice_output_enabled=False,
@@ -118,6 +129,7 @@ def test_export_command_writes_local_transcript_files(tmp_path: Path) -> None:
         session=session,
         provider=object(),
         pending_job=None,
+        pending_delivery=None,
         voice_input=DisabledVoiceInput(),
         voice_output_available=False,
         voice_output_enabled=False,
@@ -206,6 +218,7 @@ def test_trace_command_toggles_panel_visibility(tmp_path: Path) -> None:
         session=session,
         provider=object(),
         pending_job=None,
+        pending_delivery=None,
         voice_input=DisabledVoiceInput(),
         voice_output_available=False,
         voice_output_enabled=False,
@@ -227,6 +240,7 @@ def test_voice_commands_toggle_when_backend_is_available(tmp_path: Path) -> None
         session=session,
         provider=object(),
         pending_job=None,
+        pending_delivery=None,
         voice_input=DisabledVoiceInput(),
         voice_output_available=True,
         voice_output_enabled=False,
@@ -238,6 +252,7 @@ def test_voice_commands_toggle_when_backend_is_available(tmp_path: Path) -> None
         session=session,
         provider=object(),
         pending_job=None,
+        pending_delivery=None,
         voice_input=DisabledVoiceInput(),
         voice_output_available=True,
         voice_output_enabled=True,
@@ -249,3 +264,96 @@ def test_voice_commands_toggle_when_backend_is_available(tmp_path: Path) -> None
     assert enabled["status_line"] == "Voice output enabled."
     assert disabled["voice_output_enabled"] is False
     assert disabled["status_line"] == "Voice output disabled."
+
+
+def test_handle_key_blocks_user_send_while_assistant_delivery_is_pending(
+    tmp_path: Path,
+) -> None:
+    persona = _load_test_persona()
+    session = ConversationSession(persona=persona)
+    session.bootstrap()
+
+    outcome = _handle_key(
+        key="\n",
+        draft="지금 바로 답장해도 돼?",
+        session=session,
+        persona=persona,
+        provider=object(),
+        pending_job=None,
+        pending_delivery=PendingDelivery(
+            kind="reply",
+            text="곧 보낼 답장",
+            due_at=9999999999.0,
+            trace_note="typing",
+        ),
+        voice_input=DisabledVoiceInput(),
+        voice_output_available=False,
+        voice_output_enabled=False,
+        show_trace=True,
+        session_dir=tmp_path,
+    )
+
+    assert outcome["draft"] == "지금 바로 답장해도 돼?"
+    assert outcome["pending_job"] is None
+    assert outcome["status_line"] == "Assistant is still busy."
+    assert session.messages[-1].role == "system"
+    assert "assistant turn" in session.messages[-1].text
+
+
+def test_listen_command_blocks_while_assistant_delivery_is_pending(
+    tmp_path: Path,
+) -> None:
+    persona = _load_test_persona()
+    session = ConversationSession(persona=persona)
+    session.bootstrap()
+
+    outcome = _handle_command(
+        text="/listen",
+        session=session,
+        provider=object(),
+        pending_job=None,
+        pending_delivery=PendingDelivery(
+            kind="nudge",
+            text="...",
+            due_at=9999999999.0,
+            trace_note="idle-nudge",
+        ),
+        voice_input=DisabledVoiceInput(),
+        voice_output_available=False,
+        voice_output_enabled=False,
+        show_trace=True,
+        session_dir=tmp_path,
+    )
+
+    assert outcome["pending_job"] is None
+    assert outcome["status_line"] == "Assistant is still busy."
+    assert session.messages[-1].role == "system"
+    assert "assistant turn" in session.messages[-1].text
+
+
+def test_run_chat_app_returns_clean_error_without_tty(
+    monkeypatch,
+    capsys,
+    tmp_path: Path,
+) -> None:
+    export_calls = []
+
+    def fake_export_session(*_args, **_kwargs):
+        export_calls.append("called")
+        raise AssertionError("export_session should not run when chat never starts")
+
+    monkeypatch.setattr("girlfriend_generator.app.export_session", fake_export_session)
+    monkeypatch.setattr("girlfriend_generator.app.sys.stdin.isatty", lambda: False)
+    monkeypatch.setattr("girlfriend_generator.app.sys.stdout.isatty", lambda: False)
+
+    exit_code = run_chat_app(
+        AppConfig(
+            persona_path=Path("personas/han-seo-jin-crush.json"),
+            session_dir=tmp_path,
+        )
+    )
+
+    output = capsys.readouterr().out
+    assert exit_code == 1
+    assert "requires a TTY" in output
+    assert export_calls == []

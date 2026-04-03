@@ -93,6 +93,8 @@ If you want to pin a specific persona from outside the repository, pass an absol
 
 Repo-relative persona paths such as `--persona personas/han-seo-jin-crush.json` are also resolved against the project root, so installed entrypoints keep working even when launched from another directory.
 
+Interactive chat requires a real TTY on stdin and stdout. Non-interactive commands such as `--help` and `--list-personas` still work in pipes or scripts, but the live chat loop exits cleanly with a short error if you launch it outside a terminal.
+
 Optional flags:
 
 - `--provider heuristic|openai|anthropic`
@@ -121,6 +123,8 @@ This repository is intentionally scoped to a terminal-only CLI simulator. The in
 - `/voice on` and `/voice off` toggle voice output
 - `/listen` runs the configured voice-input command and sends the transcript
 - `/quit` exits
+
+While the assistant is already typing, finishing a queued reply, or running `/listen`, the next user send is held until that assistant turn completes. This avoids overlapping replies and keeps typing indicators, idle nudges, and transcript ordering stable.
 
 ## Example
 

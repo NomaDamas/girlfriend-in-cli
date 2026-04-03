@@ -120,6 +120,31 @@ assert nudge_result["event_type"] == "nudge"
 assert nudge_result["text"]
 PY
 
+ROOT_DIR_FOR_DOCS="$ROOT_DIR" python - <<'PY' >"$EVIDENCE_DIR/docs-check.txt"
+from pathlib import Path
+import os
+
+readme = Path(os.environ["ROOT_DIR_FOR_DOCS"]) / "README.md"
+readme = readme.read_text(encoding="utf-8")
+checks = {
+    "install": "## Install",
+    "run": "## Run",
+    "performance": "## Performance",
+    "verification": "## Verification",
+}
+for key, marker in checks.items():
+    assert marker in readme
+    print(f"{key}={marker}")
+PY
+
+PYTEST_LAST_LINE="$(tail -n 1 "$EVIDENCE_DIR/pytest.txt")"
+INSTALL_LAST_LINE="$(tail -n 1 "$EVIDENCE_DIR/install.txt" | tr -d '\r')"
+HELP_LAST_LINE="$(tail -n 1 "$EVIDENCE_DIR/help.txt" | tr -d '\r')"
+MODULE_HELP_LAST_LINE="$(tail -n 1 "$EVIDENCE_DIR/module-help.txt" | tr -d '\r')"
+PATH_SUMMARY="$(tr '\n' ' ' < "$EVIDENCE_DIR/path-check.txt" | sed 's/  */ /g')"
+EXPORT_SUMMARY="$(tr '\n' ' ' < "$EVIDENCE_DIR/export-check.txt" | sed 's/  */ /g')"
+INTERACTIVE_SUMMARY="$(tr '\n' ' ' < "$EVIDENCE_DIR/interactive-check.txt" | sed 's/  */ /g')"
+
 cat >"$EVIDENCE_DIR/summary.md" <<EOF
 # Verification Evidence
 
@@ -144,35 +169,58 @@ cat >"$EVIDENCE_DIR/summary.md" <<EOF
 - \`path-check.txt\`
 - \`export-check.txt\`
 - \`interactive-check.txt\`
+- \`docs-check.txt\`
+- \`test-output.txt\`
 EOF
 
 cat >"$EVIDENCE_DIR/test-output.txt" <<EOF
 COMMAND: python3 -m compileall src
+EXIT: 0
 RESULT: PASS
 
 COMMAND: python3 -m pytest
+EXIT: 0
 RESULT: PASS
+SUMMARY: ${PYTEST_LAST_LINE}
 
 COMMAND: editable install
+EXIT: 0
 RESULT: ${INSTALL_MODE}
+LAST_LINE: ${INSTALL_LAST_LINE}
 
 COMMAND: girlfriend-generator --help
+EXIT: 0
 RESULT: PASS
+LAST_LINE: ${HELP_LAST_LINE}
 
 COMMAND: python -m girlfriend_generator --help
+EXIT: 0
 RESULT: PASS
+LAST_LINE: ${MODULE_HELP_LAST_LINE}
 
 COMMAND: girlfriend-generator --list-personas
+EXIT: 0
 RESULT: PASS
 
 COMMAND: python -m girlfriend_generator --list-personas
+EXIT: 0
 RESULT: PASS
 
 COMMAND: repo-local path/export checks
+EXIT: 0
 RESULT: PASS
+DETAIL: ${PATH_SUMMARY}
+DETAIL: ${EXPORT_SUMMARY}
 
 COMMAND: interactive send-reply-nudge check
+EXIT: 0
 RESULT: PASS
+DETAIL: ${INTERACTIVE_SUMMARY}
+
+COMMAND: README docs coverage
+EXIT: 0
+RESULT: PASS
+DETAIL: $(tr '\n' ' ' < "$EVIDENCE_DIR/docs-check.txt" | sed 's/  */ /g')
 EOF
 
 printf 'Evidence written to %s\n' "$EVIDENCE_DIR"

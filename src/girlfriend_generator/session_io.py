@@ -15,7 +15,10 @@ def export_session(
     session_dir.mkdir(parents=True, exist_ok=True)
     messages = list(messages)
     timestamp = messages[-1].created_at.strftime("%Y%m%d-%H%M%S") if messages else "empty"
-    base_name = f"{timestamp}-{slugify(persona.name)}"
+    base_name = _build_unique_base_name(
+        session_dir=session_dir,
+        base_name=f"{timestamp}-{slugify(persona.name)}",
+    )
     json_path = session_dir / f"{base_name}.json"
     markdown_path = session_dir / f"{base_name}.md"
 
@@ -58,6 +61,17 @@ def export_session(
         encoding="utf-8",
     )
     return json_path, markdown_path
+
+
+def _build_unique_base_name(session_dir: Path, base_name: str) -> str:
+    candidate = base_name
+    suffix = 2
+    while (session_dir / f"{candidate}.json").exists() or (
+        session_dir / f"{candidate}.md"
+    ).exists():
+        candidate = f"{base_name}-{suffix}"
+        suffix += 1
+    return candidate
 
 
 def render_markdown(persona: Persona, messages: list[ChatMessage]) -> str:

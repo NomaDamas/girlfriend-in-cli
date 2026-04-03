@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import platform
 import shlex
+import shutil
 import subprocess
 from dataclasses import dataclass
 
@@ -63,7 +64,7 @@ class CommandVoiceInput(VoiceInputAdapter):
 
 
 def build_voice_output(enabled: bool) -> VoiceOutputAdapter:
-    if enabled and platform.system() == "Darwin":
+    if enabled and platform.system() == "Darwin" and shutil.which("say"):
         return SayVoiceOutput()
     return NullVoiceOutput()
 

@@ -45,7 +45,7 @@ Bootstrap a local editable environment from the repository root:
 bash scripts/bootstrap.sh
 ```
 
-That script prefers `python -m pip install --no-build-isolation -e ".[dev]"`, then falls back to `python setup.py develop` inside a `--system-site-packages` virtualenv when standards-based editable installs are blocked. The `--no-build-isolation` path avoids unnecessary network lookups for build dependencies and keeps setup local without touching `~/.codex`.
+That script prefers `python -m pip install --no-build-isolation -e ".[dev]"`, then falls back to `python setup.py develop` inside a `--system-site-packages` virtualenv when standards-based editable installs are blocked. The `--no-build-isolation` path avoids unnecessary network lookups for build dependencies and keeps setup local without touching `~/.codex`. After installation it also sanity-checks the terminal entrypoints with `girlfriend-generator --help`, `python -m girlfriend_generator --help`, and bundled persona discovery.
 
 On machines without local `wheel` support, the script skips straight to `python setup.py develop`, which is the verified offline-safe path in this repository.
 
@@ -133,6 +133,7 @@ girlfriend-generator \
 ## Voice Notes
 
 Voice output works out of the box on macOS through the built-in `say` command.
+If `say` is unavailable, the CLI falls back to silent mode instead of failing the chat loop.
 
 Voice input is intentionally adapter-based for now. Pass a command that records and transcribes speech, then prints the transcript to stdout. This keeps the base app lightweight while still making voice flows scriptable inside Codex or Claude Code workflows.
 
@@ -156,7 +157,7 @@ By default the app exports each finished session to the repository-local `sessio
 - JSON for programmatic reuse
 - Markdown for quick review or prompt reuse
 
-Editable installs resolve the export target from the repository root rather than your current shell directory, so installed entrypoints still keep transcripts local to this project. Relative `--session-dir` values are resolved the same way. If you are using a non-editable local install, set `GIRLFRIEND_GENERATOR_ROOT` to the repository path to keep the same behavior. You can also trigger export manually with `/export`.
+Editable installs resolve the export target from the repository root rather than your current shell directory, so installed entrypoints still keep transcripts local to this project. Relative `--session-dir` values are resolved the same way. Repeated exports in the same second use collision-safe filenames instead of overwriting the previous transcript. If you are using a non-editable local install, set `GIRLFRIEND_GENERATOR_ROOT` to the repository path to keep the same behavior. You can also trigger export manually with `/export`.
 
 ## Verification
 

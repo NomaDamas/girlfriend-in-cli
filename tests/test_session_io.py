@@ -26,6 +26,33 @@ def test_export_session_writes_json_and_markdown(tmp_path: Path) -> None:
     )
 
 
+def test_export_session_uses_unique_filenames_on_repeat_export(tmp_path: Path) -> None:
+    persona = load_persona(Path("personas/han-seo-jin-crush.json"))
+    session = ConversationSession(persona=persona)
+    session.bootstrap()
+    session.add_user_message("같은 초에 두 번 저장해도 덮어쓰지 마.")
+
+    first_json, first_markdown = export_session(
+        session_dir=tmp_path,
+        persona=persona,
+        messages=session.messages,
+    )
+    second_json, second_markdown = export_session(
+        session_dir=tmp_path,
+        persona=persona,
+        messages=session.messages,
+    )
+
+    assert first_json.exists()
+    assert first_markdown.exists()
+    assert second_json.exists()
+    assert second_markdown.exists()
+    assert second_json != first_json
+    assert second_markdown != first_markdown
+    assert second_json.stem.endswith("-2")
+    assert second_markdown.stem.endswith("-2")
+
+
 def test_slugify_keeps_ascii_safe_names() -> None:
     assert slugify("Han Seo Jin") == "han-seo-jin"
     assert slugify("유나") == "유나"

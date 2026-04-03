@@ -14,11 +14,22 @@ def test_build_voice_output_prefers_local_noop_off_darwin(monkeypatch) -> None:
 
 def test_build_voice_output_uses_say_on_darwin(monkeypatch) -> None:
     monkeypatch.setattr(voice.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(voice.shutil, "which", lambda command: "/usr/bin/say")
 
     adapter = voice.build_voice_output(enabled=True)
 
     assert isinstance(adapter, voice.SayVoiceOutput)
     assert adapter.name == "macos-say"
+
+
+def test_build_voice_output_falls_back_when_say_is_unavailable(monkeypatch) -> None:
+    monkeypatch.setattr(voice.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(voice.shutil, "which", lambda command: None)
+
+    adapter = voice.build_voice_output(enabled=True)
+
+    assert isinstance(adapter, voice.NullVoiceOutput)
+    assert adapter.name == "off"
 
 
 def test_command_voice_input_returns_trimmed_transcript(monkeypatch) -> None:

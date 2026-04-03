@@ -23,6 +23,46 @@ class NudgePolicy:
 
 
 @dataclass(slots=True)
+class ContextEvidence:
+    source_type: str
+    label: str
+    value: str
+    confidence: float = 0.6
+    tags: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class StyleProfile:
+    warmth: float = 0.7
+    teasing: float = 0.6
+    directness: float = 0.55
+    message_length: str = "short-medium"
+    emoji_level: str = "low"
+    signature_phrases: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class InitiativeProfile:
+    min_interval_seconds: int = 900
+    max_interval_seconds: int = 3600
+    spontaneity: float = 0.55
+    opener_templates: list[str] = field(default_factory=list)
+    follow_up_templates: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
+class ContextBundle:
+    name: str
+    age: int
+    relationship_mode: str
+    notes: str = ""
+    links: list[str] = field(default_factory=list)
+    snippets: list[str] = field(default_factory=list)
+    boundaries: list[str] = field(default_factory=list)
+    requested_traits: list[str] = field(default_factory=list)
+
+
+@dataclass(slots=True)
 class Persona:
     name: str
     age: int
@@ -36,6 +76,10 @@ class Persona:
     greeting: str
     accent_color: str = "magenta"
     provider_system_hint: str = ""
+    context_summary: str = ""
+    style_profile: StyleProfile = field(default_factory=StyleProfile)
+    initiative_profile: InitiativeProfile = field(default_factory=InitiativeProfile)
+    evidence: list[ContextEvidence] = field(default_factory=list)
     typing: TypingProfile = field(default_factory=TypingProfile)
     nudge_policy: NudgePolicy = field(default_factory=NudgePolicy)
 
@@ -57,6 +101,13 @@ class ChatMessage:
 class ProviderReply:
     text: str
     typing_seconds: float
+    trace_note: str
+
+
+@dataclass(slots=True)
+class TickResult:
+    event_type: str
+    text: str | None
     trace_note: str
 
 

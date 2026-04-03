@@ -4,7 +4,14 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .models import NudgePolicy, Persona, TypingProfile
+from .models import (
+    ContextEvidence,
+    InitiativeProfile,
+    NudgePolicy,
+    Persona,
+    StyleProfile,
+    TypingProfile,
+)
 
 
 def discover_personas(directory: Path) -> list[Path]:
@@ -30,6 +37,10 @@ def load_persona(path: Path) -> Persona:
         greeting=payload["greeting"],
         accent_color=payload.get("accent_color", "magenta"),
         provider_system_hint=payload.get("provider_system_hint", ""),
+        context_summary=payload.get("context_summary", ""),
+        style_profile=StyleProfile(**payload.get("style_profile", {})),
+        initiative_profile=InitiativeProfile(**payload.get("initiative_profile", {})),
+        evidence=[ContextEvidence(**item) for item in payload.get("evidence", [])],
         typing=TypingProfile(**payload.get("typing", {})),
         nudge_policy=NudgePolicy(**payload["nudge_policy"]),
     )

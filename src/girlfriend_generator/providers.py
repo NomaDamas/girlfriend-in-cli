@@ -35,13 +35,35 @@ class HeuristicProvider:
         emotion = self._pick_emotion(lower)
         hook = self._pick_hook(persona, affection_score)
         question = self._pick_question(persona, lower)
-        text = f"{opener} {emotion} {hook} {question}".strip()
+        style = self._pick_style_hook(persona)
+        text = f"{opener} {emotion} {hook} {style} {question}".strip()
         typing_seconds = self._typing_seconds(persona, text)
         return ProviderReply(
             text=text,
             typing_seconds=typing_seconds,
             trace_note=f"{self.performance_mode}-heuristic: zero-network local reply",
         )
+
+    def generate_initiative(
+        self,
+        persona: Persona,
+        history: list[ChatMessage],
+        affection_score: int,
+    ) -> str:
+        opener = self.rng.choice(
+            persona.initiative_profile.opener_templates or [persona.greeting]
+        )
+        follow_up = self.rng.choice(
+            persona.initiative_profile.follow_up_templates or ["오늘 텐션 어떤지 궁금했어."]
+        )
+        context = ""
+        if persona.context_summary:
+            context = f" {persona.context_summary.split('.')[0]}."
+        if affection_score >= 65:
+            closer = " 지금은 내가 먼저 말 걸어도 되는 타이밍 같아서 왔어."
+        else:
+            closer = " 그냥 갑자기 네 톤이 떠올라서 먼저 와봤어."
+        return f"{opener} {follow_up}{context}{closer}".strip()
 
     def _typing_seconds(self, persona: Persona, text: str) -> float:
         if self.performance_mode == "turbo":
@@ -108,6 +130,15 @@ class HeuristicProvider:
             ]
         )
 
+    def _pick_style_hook(self, persona: Persona) -> str:
+        phrases = persona.style_profile.signature_phrases
+        if not phrases:
+            return ""
+        chosen = self.rng.choice(phrases)
+        if chosen in {"ㅋㅋ", "ㅎㅎ"}:
+            return chosen
+        return f"그리고 네가 {chosen} 같은 결로 말하면 persona 유지가 훨씬 잘 돼."
+
 
 class OpenAIProvider:
     def __init__(self, model: str | None = None) -> None:
@@ -160,6 +191,20 @@ class OpenAIProvider:
             trace_note=f"openai:{self.model}",
         )
 
+    def generate_initiative(
+        self,
+        persona: Persona,
+        history: list[ChatMessage],
+        affection_score: int,
+    ) -> str:
+        reply = self.generate_reply(
+            persona=persona,
+            history=history,
+            user_text="Start a believable initiative message first, as if the persona texted unexpectedly.",
+            affection_score=affection_score,
+        )
+        return reply.text
+
 
 class AnthropicProvider:
     def __init__(self, model: str | None = None) -> None:
@@ -204,6 +249,20 @@ class AnthropicProvider:
             trace_note=f"anthropic:{self.model}",
         )
 
+    def generate_initiative(
+        self,
+        persona: Persona,
+        history: list[ChatMessage],
+        affection_score: int,
+    ) -> str:
+        reply = self.generate_reply(
+            persona=persona,
+            history=history,
+            user_text="Start a believable initiative message first, as if the persona texted unexpectedly.",
+            affection_score=affection_score,
+        )
+        return reply.text
+
 
 def build_provider(config: ProviderConfig):
     if config.name == "heuristic":
@@ -224,6 +283,8 @@ def _build_system_prompt(persona: Persona, affection_score: int) -> str:
         f"Background: {persona.background}. Situation: {persona.situation}. "
         f"Texting style: {persona.texting_style}. Interests: {', '.join(persona.interests)}. "
         f"Soft spots: {', '.join(persona.soft_spots)}. Boundaries: {', '.join(persona.boundaries)}. "
+        f"Context summary: {persona.context_summary or 'None'}. "
+        f"Signature phrases: {', '.join(persona.style_profile.signature_phrases) or 'None'}. "
         f"Affection score: {affection_score}/100. "
         f"Additional hint: {persona.provider_system_hint or 'None'}"
     )

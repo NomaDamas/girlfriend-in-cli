@@ -6,7 +6,9 @@
 
 - Runs a KakaoTalk-like chat flow in the terminal
 - Loads detailed adult personas from `personas/*.json`
+- Compiles richer personas from notes, snippets, and public-context links
 - Simulates assistant typing and follow-up nudges
+- Supports irregular first-message initiative instead of only reactive replies
 - Supports optional voice output on macOS via `say`
 - Supports optional voice input through a user-supplied transcription command
 - Shows a live `ECC Trace` panel with the active persona, provider, voice adapters, idle timers, and local skill roots
@@ -75,6 +77,29 @@ Optional flags:
 - `--no-trace`
 - `--list-personas`
 
+## API
+
+Run the server-ready JSON API:
+
+```bash
+girlfriend-generator-api --host 127.0.0.1 --port 8765
+```
+
+Core endpoints:
+
+- `POST /v1/context/compile`
+- `POST /v1/sessions`
+- `POST /v1/sessions/:id/message`
+- `POST /v1/sessions/:id/tick`
+- `GET /v1/sessions/:id/state`
+
+The moat-oriented flow is:
+
+1. ingest notes, snippets, and links
+2. compile them into a structured persona
+3. run a session with memory, nudges, and irregular initiative
+4. verify the behavior with end-to-end tests and evidence capture
+
 ## Controls
 
 - Type normally to compose a message
@@ -141,6 +166,7 @@ The smoke script verifies:
 - bundled persona discovery from outside the repository
 - repository-local transcript path resolution
 - direct transcript export into the repository-local `sessions/` directory
+- API/server-ready persona compilation and session behavior through pytest E2E coverage
 
 ## Ouroboros
 

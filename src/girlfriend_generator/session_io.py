@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict
 from pathlib import Path
 from typing import Iterable
 
@@ -28,9 +27,18 @@ def export_session(
             "background": persona.background,
             "situation": persona.situation,
             "texting_style": persona.texting_style,
+            "context_summary": persona.context_summary,
             "interests": persona.interests,
             "soft_spots": persona.soft_spots,
             "boundaries": persona.boundaries,
+            "style_profile": {
+                "warmth": persona.style_profile.warmth,
+                "teasing": persona.style_profile.teasing,
+                "directness": persona.style_profile.directness,
+                "message_length": persona.style_profile.message_length,
+                "emoji_level": persona.style_profile.emoji_level,
+                "signature_phrases": persona.style_profile.signature_phrases,
+            },
         },
         "messages": [
             {

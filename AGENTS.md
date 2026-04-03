@@ -18,4 +18,5 @@ This repository vendors project-local assets from `affaan-m/everything-claude-co
 
 - When running Ouroboros/Ralph-style verification in this repository, prefer repo-local evidence files under `artifacts/ouroboros/latest/`.
 - Treat `artifacts/ouroboros/latest/test-output.txt` as the canonical condensed `test_output` artifact.
+- Treat `artifacts/ouroboros/latest/claim-map.md` as the canonical AC-to-evidence map.
 - When summarizing verification, prefer direct command/output evidence over prose-only claims.

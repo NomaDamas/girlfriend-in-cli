@@ -53,4 +53,4 @@ Available local ECC skills:
 
 - This setup intentionally omits ECC's project-local `.codex/config.toml`.
 - Current Codex global settings remain unchanged.
-- For repo-local Ralph/Ouroboros runs, use `artifacts/ouroboros/latest/test-output.txt` and the sibling evidence files as the primary verification source before writing narrative summaries.
+- For repo-local Ralph/Ouroboros runs, use `artifacts/ouroboros/latest/test-output.txt` and `artifacts/ouroboros/latest/claim-map.md` as the primary verification sources before writing narrative summaries.

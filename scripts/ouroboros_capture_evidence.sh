@@ -173,6 +173,52 @@ cat >"$EVIDENCE_DIR/summary.md" <<EOF
 - \`test-output.txt\`
 EOF
 
+cat >"$EVIDENCE_DIR/claim-map.md" <<EOF
+# Acceptance Criteria Claim Map
+
+## AC1 Package install and run
+
+- Command: \`bash scripts/bootstrap.sh\`
+- Evidence: install mode recorded in \`install.txt\`
+- Entrypoint evidence:
+  - \`help.txt\`
+  - \`module-help.txt\`
+  - \`personas.txt\`
+  - \`module-personas.txt\`
+
+## AC2 Interactive CLI behavior
+
+- Full suite result: \`pytest.txt\`
+- Focused interaction evidence: \`interactive-check.txt\`
+- App/runtime coverage:
+  - \`tests/test_app.py\`
+  - \`tests/test_engine.py\`
+  - \`tests/test_voice.py\`
+
+## AC3 Root verification
+
+- Command: \`python3 -m pytest\`
+- Result: see \`pytest.txt\`
+- Command: \`bash scripts/smoke.sh\`
+- Result: replicated by this capture script and summarized in \`test-output.txt\`
+
+## AC4 Transcript export locality
+
+- Path evidence: \`path-check.txt\`
+- Export evidence: \`export-check.txt\`
+- Repo-local target: \`${ROOT_DIR}/sessions\`
+
+## AC5 Documentation
+
+- README coverage evidence: \`docs-check.txt\`
+- Sections asserted:
+  - Install
+  - Run
+  - Performance
+  - Transcript Export
+  - Verification
+EOF
+
 cat >"$EVIDENCE_DIR/test-output.txt" <<EOF
 COMMAND: python3 -m compileall src
 EXIT: 0
@@ -221,6 +267,8 @@ COMMAND: README docs coverage
 EXIT: 0
 RESULT: PASS
 DETAIL: $(tr '\n' ' ' < "$EVIDENCE_DIR/docs-check.txt" | sed 's/  */ /g')
+
+CANONICAL_AC_MAP: ${EVIDENCE_DIR}/claim-map.md
 EOF
 
 printf 'Evidence written to %s\n' "$EVIDENCE_DIR"

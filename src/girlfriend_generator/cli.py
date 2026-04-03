@@ -4,6 +4,7 @@ import argparse
 from pathlib import Path
 
 from .app import AppConfig, run_chat_app
+from .paths import bundled_persona_dir, bundled_session_dir
 from .personas import discover_personas
 
 
@@ -44,7 +45,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--session-dir",
         type=Path,
-        default=Path("sessions"),
+        default=None,
         help="Directory where exported chat transcripts are stored.",
     )
     parser.add_argument(
@@ -68,7 +69,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
-    persona_dir = Path.cwd() / "personas"
+    persona_dir = bundled_persona_dir()
     bundled_personas = discover_personas(persona_dir) if persona_dir.exists() else []
 
     if args.list_personas:
@@ -87,7 +88,7 @@ def main() -> int:
         performance_mode=args.performance,
         voice_output=args.voice_output,
         voice_input_command=args.voice_input_command,
-        session_dir=args.session_dir,
+        session_dir=args.session_dir or bundled_session_dir(),
         export_on_exit=not args.no_export_on_exit,
         show_trace=not args.no_trace,
     )

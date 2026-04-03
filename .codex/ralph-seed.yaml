@@ -1,0 +1,80 @@
+goal: Stabilize and harden the girlfriend_generator repository as a deployable terminal-only romance simulation CLI with project-local ECC integration, preserving fast local performance and avoiding ontology oscillation.
+task_type: code
+
+brownfield_context:
+  project_type: brownfield
+  context_references:
+    - path: /Users/jinminseong/Desktop/girlfriend_generator
+      role: primary
+      summary: Existing Python CLI project with Rich-based terminal chat UI, personas, transcript export, local ECC assets, smoke scripts, and tests.
+  existing_patterns:
+    - Rich terminal rendering
+    - persona-driven chat simulation
+    - local ECC instructions under AGENTS.md and .codex/AGENTS.md
+    - pytest plus smoke-script verification
+  existing_dependencies:
+    - rich
+    - pytest
+
+constraints:
+  - Keep the product ontology fixed to a terminal-only CLI romance simulator for vibe-coding breaks.
+  - Do not broaden scope into web, mobile, browser UI, browser automation, or non-chat products.
+  - Preserve project-local ECC usage only; do not modify ~/.codex global defaults.
+  - Keep personas explicitly adult and keep flirtation non-explicit.
+  - Prefer low-latency local execution paths over remote-model dependency where possible.
+  - Avoid unnecessary ontology mutation between generations; refine implementation, verification, packaging, and operability instead.
+  - Favor convergence over novelty.
+
+acceptance_criteria:
+  - The repository installs and runs as a Python package from the local project.
+  - The CLI provides interactive chat, typing indicators, idle nudges, voice hooks, and ECC trace visibility.
+  - Tests and smoke checks pass from the repository root.
+  - Session transcript export works and remains local to the repository.
+  - Documentation clearly explains install, run, performance mode, and verification.
+
+ontology_schema:
+  name: CLI_Romance_Simulator
+  description: Stable ontology for the girlfriend_generator product without cross-surface expansion.
+  fields:
+    - name: product_surface
+      type: string
+      description: The single allowed operating surface for the product.
+      required: true
+    - name: runtime_features
+      type: array
+      description: Core runtime capabilities kept within the CLI experience.
+      required: true
+    - name: verification_state
+      type: object
+      description: Current install, test, smoke, and export verification status.
+      required: true
+    - name: ecc_locality
+      type: object
+      description: Evidence that ECC remains project-local and does not change global Codex defaults.
+      required: true
+
+evaluation_principles:
+  - name: ontology_stability
+    description: Preserve the fixed product ontology and reject drift into other surfaces or products.
+    weight: 1.0
+  - name: operational_readiness
+    description: Favor concrete installability, repeatable verification, and deployable repository hygiene.
+    weight: 1.0
+  - name: performance_first
+    description: Prefer low-latency local execution paths unless a change is explicitly justified.
+    weight: 0.9
+
+exit_conditions:
+  - name: all_acceptance_criteria_met
+    description: Stop when all acceptance criteria are satisfied without meaningful ontology drift.
+    criteria: 100 percent acceptance criteria pass and no rejected ontology mutation is pending.
+  - name: stagnation_detected
+    description: Stop if iterations no longer improve implementation quality and only repeat ontology variants.
+    criteria: Two consecutive iterations with no implementation delta and no measurable QA improvement.
+
+metadata:
+  seed_id: seed_girlfriend_generator_ralph_20260403
+  version: 1.0.0
+  ambiguity_score: 0.05
+  interview_id: manual_ralph_seed_20260403
+

@@ -558,11 +558,8 @@ def _handle_command(
                 "voice_output_enabled": voice_output_enabled,
                 "quit": False,
             }
-        try:
-            # Dry-run a callable lookup for clearer failure messaging.
-            getattr(voice_input, "listen")
-        except Exception as exc:
-            session.add_system_message(str(exc))
+        if getattr(voice_input, "name", "off") == "off":
+            session.add_system_message("Voice input is disabled. Provide --voice-input-command.")
             return {
                 "draft": "",
                 "status_line": "Voice input unavailable.",

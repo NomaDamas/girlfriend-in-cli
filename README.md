@@ -21,17 +21,47 @@ This repository vendors Everything Claude Code assets project-locally:
 
 It does **not** modify `~/.codex/config.toml` or global Codex defaults.
 
-## Run
+## Install
 
-```bash
-PYTHONPATH=src python3 -m girlfriend_generator --persona personas/han-seo-jin-crush.json
-```
-
-Bootstrap a local venv:
+Bootstrap a local editable environment:
 
 ```bash
 bash scripts/bootstrap.sh
 ```
+
+That script prefers `python -m pip install --no-build-isolation -e ".[dev]"`, then falls back to `python setup.py develop` inside a `--system-site-packages` virtualenv when standards-based editable installs are blocked. The `--no-build-isolation` path avoids unnecessary network lookups for build dependencies and keeps setup local without touching `~/.codex`.
+
+On machines without local `wheel` support, the script skips straight to `python setup.py develop`, which is the verified offline-safe path in this repository.
+
+Manual local install from the repository root:
+
+```bash
+python3 -m venv --system-site-packages .venv
+source .venv/bin/activate
+python setup.py develop
+```
+
+If your environment already has `wheel` installed locally, this standards-based editable install also works:
+
+```bash
+python -m pip install --no-build-isolation -e ".[dev]"
+```
+
+## Run
+
+Once installed, run the package entrypoint from anywhere:
+
+```bash
+girlfriend-generator
+```
+
+You can also use the module entrypoint while staying in the repository:
+
+```bash
+python3 -m girlfriend_generator --persona personas/han-seo-jin-crush.json
+```
+
+If you want to pin a specific persona from outside the repository, pass an absolute path to the persona file.
 
 Optional flags:
 
@@ -61,8 +91,8 @@ Optional flags:
 ## Example
 
 ```bash
-PYTHONPATH=src python3 -m girlfriend_generator \
-  --persona personas/yu-na-girlfriend.json \
+girlfriend-generator \
+  --persona /absolute/path/to/girlfriend_generator/personas/yu-na-girlfriend.json \
   --voice-output
 ```
 
@@ -83,14 +113,16 @@ Default runtime is tuned for low latency:
 
 If you switch to `openai` or `anthropic`, quality can improve, but latency will be worse than the local turbo path.
 
+Use `--performance balanced` if you want slightly longer typing simulation without leaving the local heuristic path. Use `--performance cinematic` only when you explicitly want slower, more dramatic pacing.
+
 ## Transcript Export
 
-By default the app exports each finished session to `sessions/` as:
+By default the app exports each finished session to the repository-local `sessions/` directory as:
 
 - JSON for programmatic reuse
 - Markdown for quick review or prompt reuse
 
-You can also trigger this manually with `/export`.
+The default export target is resolved from the repository root, not your current shell directory, so installed entrypoints still keep transcripts local to this project. You can also trigger export manually with `/export`.
 
 ## Verification
 
@@ -100,4 +132,41 @@ Local smoke check:
 bash scripts/smoke.sh
 ```
 
-GitHub Actions also runs compile + test on Python 3.10, 3.11, and 3.12 after push.
+The smoke script verifies:
+
+- package compilation
+- `pytest` from the repository root
+- editable install into a temporary virtualenv, using the offline-safe local path when `wheel` is unavailable
+- `girlfriend-generator --help`
+- bundled persona discovery from outside the repository
+- repository-local transcript path resolution
+- direct transcript export into the repository-local `sessions/` directory
+
+## Ouroboros
+
+This repository now includes a repo-local Ralph workflow setup:
+
+- pinned anti-oscillation seed: `.codex/ralph-seed.yaml`
+- current loop notes: `.codex/ralph-status.md`
+- evidence capture: `scripts/ouroboros_capture_evidence.sh`
+- Ralph launcher with ontology gate: `scripts/ouroboros_ralph.sh`
+
+Run the full repo-local Ralph path:
+
+```bash
+bash scripts/ouroboros_ralph.sh
+```
+
+What it does:
+
+- checks `ouroboros status health`
+- captures reproducible verification evidence under `artifacts/ouroboros/latest/`
+- scans changed paths for likely ontology drift
+- launches an interview if instability is detected
+- otherwise runs the pinned Ralph workflow sequentially
+
+To force a re-interview even when the ontology looks stable:
+
+```bash
+FORCE_INTERVIEW=1 bash scripts/ouroboros_ralph.sh "Refine the ontology before the next execution"
+```

@@ -1,6 +1,6 @@
 # Girlfriend Generator
 
-`girlfriend-generator` is a terminal-only romance simulation chat designed for short vibe-coding breaks. It keeps the interaction inside the CLI, renders chat bubbles with Rich, simulates typing indicators, sends real-time nudges when the user leaves the conversation hanging, and exposes an ECC trace panel so you can see which local Everything Claude Code assets are driving the session.
+`girlfriend-generator` is a terminal-only romance simulation chat designed for short vibe-coding breaks. It keeps the product boundary fixed to the CLI, renders chat bubbles with Rich, simulates typing indicators, sends idle nudges when the conversation stalls, and exposes an ECC trace panel so you can see which local Everything Claude Code assets are driving the session.
 
 ## What It Does
 
@@ -11,7 +11,7 @@
 - Supports irregular first-message initiative instead of only reactive replies
 - Supports optional voice output on macOS via `say`
 - Supports optional voice input through a user-supplied transcription command
-- Shows a live `ECC Trace` panel with the active persona, provider, voice adapters, idle timers, and local skill roots
+- Shows a live `ECC Trace` panel with the active persona, provider, voice adapters, nudge and initiative timers, and local skill roots
 
 ## Why It Uses ECC Locally
 
@@ -25,7 +25,7 @@ It does **not** modify `~/.codex/config.toml` or global Codex defaults.
 
 ## Install
 
-Bootstrap a local editable environment:
+Bootstrap a local editable environment from the repository root:
 
 ```bash
 bash scripts/bootstrap.sh
@@ -35,18 +35,30 @@ That script prefers `python -m pip install --no-build-isolation -e ".[dev]"`, th
 
 On machines without local `wheel` support, the script skips straight to `python setup.py develop`, which is the verified offline-safe path in this repository.
 
-Manual local install from the repository root:
+Manual runtime install from the repository root:
 
 ```bash
 python3 -m venv --system-site-packages .venv
 source .venv/bin/activate
+python -m pip install --no-build-isolation -e .
+```
+
+If your environment does not have local `wheel` support, use the offline-safe fallback instead:
+
+```bash
 python setup.py develop
 ```
 
-If your environment already has `wheel` installed locally, this standards-based editable install also works:
+If you want the local verification stack in the same environment, install the dev extra:
 
 ```bash
 python -m pip install --no-build-isolation -e ".[dev]"
+```
+
+If you choose a non-editable local install and still want persona lookup plus transcript export pinned to this repository, set:
+
+```bash
+export GIRLFRIEND_GENERATOR_ROOT=/absolute/path/to/girlfriend_generator
 ```
 
 ## Run
@@ -57,13 +69,15 @@ Once installed, run the package entrypoint from anywhere:
 girlfriend-generator
 ```
 
-You can also use the module entrypoint while staying in the repository:
+You can also use the installed module entrypoint from the same environment:
 
 ```bash
 python3 -m girlfriend_generator --persona personas/han-seo-jin-crush.json
 ```
 
 If you want to pin a specific persona from outside the repository, pass an absolute path to the persona file.
+
+Repo-relative persona paths such as `--persona personas/han-seo-jin-crush.json` are also resolved against the project root, so installed entrypoints keep working even when launched from another directory.
 
 Optional flags:
 
@@ -77,28 +91,9 @@ Optional flags:
 - `--no-trace`
 - `--list-personas`
 
-## API
+## Product Boundary
 
-Run the server-ready JSON API:
-
-```bash
-girlfriend-generator-api --host 127.0.0.1 --port 8765
-```
-
-Core endpoints:
-
-- `POST /v1/context/compile`
-- `POST /v1/sessions`
-- `POST /v1/sessions/:id/message`
-- `POST /v1/sessions/:id/tick`
-- `GET /v1/sessions/:id/state`
-
-The moat-oriented flow is:
-
-1. ingest notes, snippets, and links
-2. compile them into a structured persona
-3. run a session with memory, nudges, and irregular initiative
-4. verify the behavior with end-to-end tests and evidence capture
+This repository is intentionally scoped to a terminal-only CLI simulator. The install, smoke checks, package entrypoints, and docs are optimized around the local Rich chat loop, persona files, transcript export, voice hooks, and ECC trace visibility. Support modules used by tests and automation may exist in the codebase, but they are not exposed as separate end-user product surfaces.
 
 ## Controls
 
@@ -147,11 +142,11 @@ By default the app exports each finished session to the repository-local `sessio
 - JSON for programmatic reuse
 - Markdown for quick review or prompt reuse
 
-The default export target is resolved from the repository root, not your current shell directory, so installed entrypoints still keep transcripts local to this project. You can also trigger export manually with `/export`.
+Editable installs resolve the export target from the repository root rather than your current shell directory, so installed entrypoints still keep transcripts local to this project. Relative `--session-dir` values are resolved the same way. If you are using a non-editable local install, set `GIRLFRIEND_GENERATOR_ROOT` to the repository path to keep the same behavior. You can also trigger export manually with `/export`.
 
 ## Verification
 
-Local smoke check:
+Run the full repository-root verification path:
 
 ```bash
 bash scripts/smoke.sh
@@ -161,12 +156,14 @@ The smoke script verifies:
 
 - package compilation
 - `pytest` from the repository root
-- editable install into a temporary virtualenv, using the offline-safe local path when `wheel` is unavailable
+- editable runtime install into a temporary virtualenv, using the offline-safe local path when `wheel` is unavailable
 - `girlfriend-generator --help`
-- bundled persona discovery from outside the repository
-- repository-local transcript path resolution
+- `python -m girlfriend_generator --help`
+- bundled persona discovery from outside the repository through both entrypoints
+- repo-relative persona path resolution from outside the repository
+- repository-local transcript path resolution, including the explicit `GIRLFRIEND_GENERATOR_ROOT` override path
 - direct transcript export into the repository-local `sessions/` directory
-- API/server-ready persona compilation and session behavior through pytest E2E coverage
+- persona/session behavior through pytest coverage
 
 ## Ouroboros
 

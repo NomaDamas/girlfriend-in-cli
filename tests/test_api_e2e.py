@@ -45,6 +45,8 @@ def test_api_end_to_end_compile_message_and_tick() -> None:
     assert status == HTTPStatus.OK
     assert replied["reply"]["text"]
     assert replied["state"]["awaiting_user_reply"] is True
+    assert replied["state"]["messages"][-2]["role"] == "user"
+    assert replied["state"]["messages"][-1]["role"] == "assistant"
 
     status, nudged = route_request(
         service,

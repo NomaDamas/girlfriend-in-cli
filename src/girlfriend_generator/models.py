@@ -124,4 +124,5 @@ class RuntimeTrace:
     uses_global_codex_defaults: bool = False
     pending_reply_kind: str = "idle"
     pending_nudge_in: int | None = None
+    pending_initiative_in: int | None = None
     status_line: str = "Ready"

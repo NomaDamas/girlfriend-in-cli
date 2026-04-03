@@ -4,7 +4,11 @@ import argparse
 from pathlib import Path
 
 from .app import AppConfig, run_chat_app
-from .paths import bundled_persona_dir, bundled_session_dir
+from .paths import (
+    bundled_persona_dir,
+    resolve_persona_path,
+    resolve_session_dir,
+)
 from .personas import discover_personas
 
 
@@ -80,6 +84,7 @@ def main() -> int:
     persona_path = args.persona or (bundled_personas[0] if bundled_personas else None)
     if persona_path is None:
         parser.error("No persona file found. Add one under personas/ or pass --persona.")
+    persona_path = resolve_persona_path(persona_path)
 
     config = AppConfig(
         persona_path=persona_path,
@@ -88,7 +93,7 @@ def main() -> int:
         performance_mode=args.performance,
         voice_output=args.voice_output,
         voice_input_command=args.voice_input_command,
-        session_dir=args.session_dir or bundled_session_dir(),
+        session_dir=resolve_session_dir(args.session_dir),
         export_on_exit=not args.no_export_on_exit,
         show_trace=not args.no_trace,
     )

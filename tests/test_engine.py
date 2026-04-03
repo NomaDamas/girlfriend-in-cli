@@ -38,6 +38,40 @@ def test_nudge_due_and_consumed_once() -> None:
     assert session.awaiting_user_reply is True
 
 
+def test_tick_emits_idle_nudge_when_reply_is_overdue() -> None:
+    persona = load_persona(Path("personas/han-seo-jin-crush.json"))
+    session = ConversationSession(persona=persona)
+    provider = HeuristicProvider()
+    start = utc_now()
+    session.bootstrap(now=start)
+
+    result = session.fast_forward(
+        seconds=persona.nudge_policy.idle_after_seconds + 5,
+        provider=provider,
+    )
+
+    assert result.event_type == "nudge"
+    assert result.text == persona.nudge_policy.templates[0]
+    assert result.trace_note == "tick:nudge"
+
+
+def test_tick_emits_initiative_when_conversation_is_quiet() -> None:
+    persona = load_persona(Path("personas/yu-na-girlfriend.json"))
+    session = ConversationSession(persona=persona)
+    provider = HeuristicProvider()
+    start = utc_now()
+    session.schedule_initiative(start)
+
+    result = session.tick(
+        provider=provider,
+        now=start + timedelta(seconds=persona.initiative_profile.max_interval_seconds + 5),
+    )
+
+    assert result.event_type == "initiative"
+    assert result.text
+    assert result.trace_note == "tick:initiative"
+
+
 def test_heuristic_provider_respects_typing_range() -> None:
     persona = load_persona(Path("personas/han-seo-jin-crush.json"))
     session = ConversationSession(persona=persona)

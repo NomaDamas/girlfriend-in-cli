@@ -15,3 +15,7 @@ def test_load_persona_validates_adult_and_nudges() -> None:
     assert persona.age >= 20
     assert persona.relationship_mode == "crush"
     assert persona.nudge_policy.templates
+
+
+def test_discover_personas_is_empty_for_missing_directory(tmp_path: Path) -> None:
+    assert discover_personas(tmp_path / "missing") == []

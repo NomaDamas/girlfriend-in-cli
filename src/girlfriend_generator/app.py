@@ -180,6 +180,8 @@ def run_chat_app(config: AppConfig) -> int:
                 if pending_delivery and time.monotonic() >= pending_delivery.due_at:
                     if pending_delivery.kind == "nudge":
                         delivered_text = session.consume_nudge()
+                    elif pending_delivery.kind == "initiative":
+                        delivered_text = session.consume_initiative(pending_delivery.text)
                     else:
                         delivered_text = pending_delivery.text
                         session.add_assistant_message(delivered_text, schedule_nudge=True)
@@ -196,11 +198,29 @@ def run_chat_app(config: AppConfig) -> int:
                         due_at=time.monotonic() + 1.2,
                         trace_note="idle-nudge: assistant escalated after no reply",
                     )
+                elif (
+                    session.initiative_due(now)
+                    and pending_job is None
+                    and pending_delivery is None
+                    and not draft
+                ):
+                    pending_delivery = PendingDelivery(
+                        kind="initiative",
+                        text=provider.generate_initiative(
+                            persona,
+                            session.recent_history(),
+                            session.affection_score,
+                        ),
+                        due_at=time.monotonic() + 0.9,
+                        trace_note="idle-initiative: assistant started a fresh conversation",
+                    )
 
-                trace.pending_reply_kind = (
-                    pending_job.kind if pending_job is not None else "idle"
+                trace.pending_reply_kind = _pending_activity_kind(
+                    pending_job=pending_job,
+                    pending_delivery=pending_delivery,
                 )
                 trace.pending_nudge_in = session.seconds_until_nudge(now)
+                trace.pending_initiative_in = session.seconds_until_initiative(now)
                 trace.status_line = status_line
 
                 poll_timeout = (
@@ -702,6 +722,12 @@ def _render_trace(trace: RuntimeTrace, persona: Persona, session: ConversationSe
     table.add_row("Voice in", trace.voice_input_name)
     table.add_row("Persona", trace.persona_path.name)
     table.add_row("Nudge in", str(trace.pending_nudge_in) if trace.pending_nudge_in is not None else "-")
+    table.add_row(
+        "Init in",
+        str(trace.pending_initiative_in)
+        if trace.pending_initiative_in is not None
+        else "-",
+    )
     table.add_row("Job", trace.pending_reply_kind)
     table.add_row("Global cfg", "no")
     table.add_row("Affection", f"{session.affection_score}/100")
@@ -736,6 +762,18 @@ def _build_render_key(
         user_typing,
         trace.pending_reply_kind,
         trace.pending_nudge_in,
+        trace.pending_initiative_in,
         trace.status_line,
         session.affection_score,
     )
+
+
+def _pending_activity_kind(
+    pending_job: BackgroundJob | None,
+    pending_delivery: PendingDelivery | None,
+) -> str:
+    if pending_job is not None:
+        return pending_job.kind
+    if pending_delivery is not None:
+        return pending_delivery.kind
+    return "idle"

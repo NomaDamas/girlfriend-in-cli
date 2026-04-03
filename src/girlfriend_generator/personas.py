@@ -15,6 +15,8 @@ from .models import (
 
 
 def discover_personas(directory: Path) -> list[Path]:
+    if not directory.is_dir():
+        return []
     return sorted(
         path
         for path in directory.iterdir()

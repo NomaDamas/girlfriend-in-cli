@@ -6,7 +6,6 @@
 
 - Runs a KakaoTalk-like chat flow in the terminal
 - Loads detailed adult personas from `personas/*.json`
-- Compiles richer personas from notes, snippets, and public-context links
 - Simulates assistant typing and follow-up nudges
 - Supports irregular first-message initiative instead of only reactive replies
 - Supports optional voice output on macOS via `say`
@@ -98,18 +97,46 @@ Interactive chat requires a real TTY on stdin and stdout. Non-interactive comman
 Optional flags:
 
 - `--provider heuristic|openai|anthropic`
+- `--provider heuristic|openai|anthropic|remote`
 - `--model <model-name>`
 - `--performance turbo|balanced|cinematic`
 - `--voice-output`
 - `--voice-input-command "<command that prints a transcript to stdout>"`
+- `--server-base-url`
+- `--persona-id`
 - `--session-dir <path>`
 - `--no-export-on-exit`
 - `--no-trace`
 - `--list-personas`
 
+## Remote Mode
+
+If you want server-owned persona quality and irregular initiation logic, run against the hosting service:
+
+```bash
+girlfriend-generator \
+  --provider remote \
+  --server-base-url http://127.0.0.1:8787 \
+  --persona-id persona_123
+```
+
+In remote mode:
+
+- persona packs come from the hosting server
+- replies and first-message initiative come from the hosting server
+- terminal rendering, typing UI, trace UI, voice hooks, and transcript export stay local in this repo
+
 ## Product Boundary
 
-This repository is intentionally scoped to a terminal-only CLI simulator. The install, smoke checks, package entrypoints, and docs are optimized around the local Rich chat loop, persona files, transcript export, voice hooks, and ECC trace visibility. Support modules used by tests and automation may exist in the codebase, but they are not exposed as separate end-user product surfaces.
+This repository is intentionally scoped to the terminal-only CLI client. The install, smoke checks, package entrypoints, and docs are optimized around the local Rich chat loop, persona files, transcript export, voice hooks, and ECC trace visibility.
+
+The moat features are intended to live in the separate hosting repository:
+
+- link/context ingestion
+- persona compilation
+- server-side runtime response generation
+- server-side irregular first-message scheduling
+- memory APIs
 
 ## Controls
 

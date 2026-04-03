@@ -5,6 +5,7 @@ import random
 from dataclasses import dataclass
 
 from .models import ChatMessage, Persona, ProviderReply
+from .remote import RemoteProvider
 
 
 @dataclass(slots=True)
@@ -12,6 +13,8 @@ class ProviderConfig:
     name: str
     model: str | None = None
     performance_mode: str = "turbo"
+    server_base_url: str | None = None
+    persona_id: str | None = None
 
 
 class HeuristicProvider:
@@ -267,6 +270,10 @@ class AnthropicProvider:
 def build_provider(config: ProviderConfig):
     if config.name == "heuristic":
         return HeuristicProvider(performance_mode=config.performance_mode)
+    if config.name == "remote":
+        if not config.server_base_url or not config.persona_id:
+            raise ValueError("Remote provider requires server_base_url and persona_id.")
+        return RemoteProvider(config.server_base_url, config.persona_id)
     if config.name == "openai":
         return OpenAIProvider(config.model)
     if config.name == "anthropic":

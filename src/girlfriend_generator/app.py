@@ -31,8 +31,11 @@ from .voice import build_voice_input, build_voice_output
 @dataclass(slots=True)
 class AppConfig:
     persona_path: Path
+    persona_override: Persona | None = None
     provider_name: str = "heuristic"
     provider_model: str | None = None
+    server_base_url: str | None = None
+    persona_id: str | None = None
     performance_mode: str = "turbo"
     voice_output: bool = False
     voice_input_command: str | None = None
@@ -118,12 +121,14 @@ def run_chat_app(config: AppConfig) -> int:
         )
         return 1
 
-    persona = load_persona(config.persona_path)
+    persona = config.persona_override or load_persona(config.persona_path)
     provider = build_provider(
         ProviderConfig(
             name=config.provider_name,
             model=config.provider_model,
             performance_mode=config.performance_mode,
+            server_base_url=config.server_base_url,
+            persona_id=config.persona_id,
         )
     )
     voice_output = build_voice_output(config.voice_output)

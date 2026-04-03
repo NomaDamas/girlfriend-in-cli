@@ -10,6 +10,7 @@ from .paths import (
     resolve_session_dir,
 )
 from .personas import discover_personas
+from .remote import fetch_remote_persona
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -23,7 +24,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--provider",
-        choices=["heuristic", "openai", "anthropic"],
+        choices=["heuristic", "openai", "anthropic", "remote"],
         default="heuristic",
         help="Reply generator backend.",
     )
@@ -45,6 +46,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--voice-input-command",
         help="Command that prints a voice transcript to stdout.",
+    )
+    parser.add_argument(
+        "--server-base-url",
+        help="Base URL for the remote persona/runtime server.",
+    )
+    parser.add_argument(
+        "--persona-id",
+        help="Remote persona identifier used with --provider remote.",
     )
     parser.add_argument(
         "--session-dir",
@@ -81,15 +90,25 @@ def main() -> int:
             print(persona_path)
         return 0
 
-    persona_path = args.persona or (bundled_personas[0] if bundled_personas else None)
-    if persona_path is None:
-        parser.error("No persona file found. Add one under personas/ or pass --persona.")
-    persona_path = resolve_persona_path(persona_path)
+    persona_override = None
+    if args.provider == "remote":
+        if not args.server_base_url or not args.persona_id:
+            parser.error("--provider remote requires --server-base-url and --persona-id.")
+        persona_override = fetch_remote_persona(args.server_base_url, args.persona_id)
+        persona_path = Path(f"remote/{args.persona_id}.json")
+    else:
+        persona_path = args.persona or (bundled_personas[0] if bundled_personas else None)
+        if persona_path is None:
+            parser.error("No persona file found. Add one under personas/ or pass --persona.")
+        persona_path = resolve_persona_path(persona_path)
 
     config = AppConfig(
         persona_path=persona_path,
+        persona_override=persona_override,
         provider_name=args.provider,
         provider_model=args.model,
+        server_base_url=args.server_base_url,
+        persona_id=args.persona_id,
         performance_mode=args.performance,
         voice_output=args.voice_output,
         voice_input_command=args.voice_input_command,

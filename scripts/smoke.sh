@@ -7,7 +7,9 @@ cd "$ROOT_DIR"
 python3 -m compileall src
 python3 -m pytest
 
-tmpdir="$(mktemp -d)"
+tmpdir="$ROOT_DIR/.tmp/smoke"
+rm -rf "$tmpdir"
+mkdir -p "$tmpdir"
 trap 'rm -rf "$tmpdir"' EXIT
 
 python3 -m venv --system-site-packages "$tmpdir/venv"
@@ -28,7 +30,7 @@ else
   INSTALL_MODE="setuptools develop (offline-safe default)"
 fi
 
-cd /tmp
+cd "$tmpdir"
 girlfriend-generator --help >/dev/null
 python -m girlfriend_generator --help >/dev/null
 girlfriend-generator --list-personas >/dev/null

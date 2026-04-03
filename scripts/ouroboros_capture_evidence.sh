@@ -11,7 +11,9 @@ mkdir -p "$EVIDENCE_DIR"
 python3 -m compileall src | tee "$EVIDENCE_DIR/compileall.txt"
 python3 -m pytest | tee "$EVIDENCE_DIR/pytest.txt"
 
-tmpdir="$(mktemp -d)"
+tmpdir="$ROOT_DIR/.tmp/ouroboros-evidence"
+rm -rf "$tmpdir"
+mkdir -p "$tmpdir"
 trap 'rm -rf "$tmpdir"' EXIT
 
 python3 -m venv --system-site-packages "$tmpdir/venv"
@@ -33,7 +35,7 @@ else
   INSTALL_MODE="setuptools develop (offline-safe default)"
 fi
 
-cd /tmp
+cd "$tmpdir"
 girlfriend-generator --help >"$EVIDENCE_DIR/help.txt" 2>&1
 python -m girlfriend_generator --help >"$EVIDENCE_DIR/module-help.txt" 2>&1
 girlfriend-generator --list-personas >"$EVIDENCE_DIR/personas.txt" 2>&1
@@ -142,6 +144,35 @@ cat >"$EVIDENCE_DIR/summary.md" <<EOF
 - \`path-check.txt\`
 - \`export-check.txt\`
 - \`interactive-check.txt\`
+EOF
+
+cat >"$EVIDENCE_DIR/test-output.txt" <<EOF
+COMMAND: python3 -m compileall src
+RESULT: PASS
+
+COMMAND: python3 -m pytest
+RESULT: PASS
+
+COMMAND: editable install
+RESULT: ${INSTALL_MODE}
+
+COMMAND: girlfriend-generator --help
+RESULT: PASS
+
+COMMAND: python -m girlfriend_generator --help
+RESULT: PASS
+
+COMMAND: girlfriend-generator --list-personas
+RESULT: PASS
+
+COMMAND: python -m girlfriend_generator --list-personas
+RESULT: PASS
+
+COMMAND: repo-local path/export checks
+RESULT: PASS
+
+COMMAND: interactive send-reply-nudge check
+RESULT: PASS
 EOF
 
 printf 'Evidence written to %s\n' "$EVIDENCE_DIR"

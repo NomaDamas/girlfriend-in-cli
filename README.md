@@ -23,6 +23,20 @@ This repository vendors Everything Claude Code assets project-locally:
 
 It does **not** modify `~/.codex/config.toml` or global Codex defaults.
 
+## Quickstart
+
+Fast local path from the repository root:
+
+```bash
+bash scripts/bootstrap.sh
+source .venv/bin/activate
+girlfriend-generator --performance turbo
+python3 -m pytest
+bash scripts/smoke.sh
+```
+
+That path keeps execution terminal-only, uses the low-latency local heuristic backend by default, and verifies the package entrypoint plus transcript/export behavior from the repository root.
+
 ## Install
 
 Bootstrap a local editable environment from the repository root:
@@ -145,6 +159,12 @@ By default the app exports each finished session to the repository-local `sessio
 Editable installs resolve the export target from the repository root rather than your current shell directory, so installed entrypoints still keep transcripts local to this project. Relative `--session-dir` values are resolved the same way. If you are using a non-editable local install, set `GIRLFRIEND_GENERATOR_ROOT` to the repository path to keep the same behavior. You can also trigger export manually with `/export`.
 
 ## Verification
+
+For the fast repository-root test pass:
+
+```bash
+python3 -m pytest
+```
 
 Run the full repository-root verification path:
 

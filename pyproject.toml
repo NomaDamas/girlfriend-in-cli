@@ -17,7 +17,6 @@ dev = ["pytest>=9,<10"]
 
 [project.scripts]
 girlfriend-generator = "girlfriend_generator.cli:main"
-girlfriend-generator-api = "girlfriend_generator.server:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

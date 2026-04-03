@@ -192,6 +192,8 @@ def test_render_trace_shows_idle_timers() -> None:
     assert "420" in rendered
     assert "Voice in" in rendered
     assert "external-command" in rendered
+    assert "project-local" in rendered
+    assert "Global cfg" in rendered
 
 
 def test_trace_command_toggles_panel_visibility(tmp_path: Path) -> None:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from urllib import request
+from urllib.parse import quote
 
 from .models import ChatMessage, Persona, ProviderReply
 from .personas import persona_from_pack
@@ -10,6 +11,55 @@ from .personas import persona_from_pack
 def fetch_remote_persona(base_url: str, persona_id: str) -> Persona:
     payload = _get_json(f"{base_url.rstrip('/')}/v1/persona/{persona_id}")
     return persona_from_pack(payload)
+
+
+def fetch_remote_persona_by_slug(base_url: str, slug: str) -> Persona:
+    payload = _get_json(f"{base_url.rstrip('/')}/v1/persona/by-slug/{quote(slug)}")
+    return persona_from_pack(payload)
+
+
+def compile_remote_persona(
+    base_url: str,
+    display_name: str,
+    age: int,
+    relationship_mode: str,
+    context_notes: str = "",
+    context_links: list[str] | None = None,
+    context_snippets: list[str] | None = None,
+) -> dict:
+    queued = _post_json(
+        f"{base_url.rstrip('/')}/v1/persona/ingest",
+        {
+            "name_hint": display_name,
+            "manual_description": context_notes,
+            "links": context_links or [],
+            "source_mode": "assisted" if context_links else "manual",
+        },
+    )
+    ingestion = _get_json(
+        f"{base_url.rstrip('/')}/v1/persona/ingest/{queued['ingestion_id']}"
+    )
+    return _post_json(
+        f"{base_url.rstrip('/')}/v1/persona/compile",
+        {
+            "ingestion_id": queued["ingestion_id"],
+            "display_name": display_name,
+            "relationship_mode": relationship_mode,
+            "confirmed_facts": ingestion.get("fact_candidates", []),
+            "confirmed_style": [
+                *ingestion.get("style_candidates", []),
+                *(context_snippets or []),
+            ],
+            "manual_description": context_notes,
+            "links": context_links or [],
+            "age": age,
+        },
+    )
+
+
+def list_remote_personas(base_url: str) -> list[dict]:
+    payload = _get_json(f"{base_url.rstrip('/')}/v1/personas")
+    return list(payload.get("items", []))
 
 
 class RemoteProvider:

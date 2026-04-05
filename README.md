@@ -126,6 +126,26 @@ In remote mode:
 - replies and first-message initiative come from the hosting server
 - terminal rendering, typing UI, trace UI, voice hooks, and transcript export stay local in this repo
 
+You can either:
+
+- fetch by `--persona-id`
+- fetch by `--persona-slug`
+- compile a new remote persona on the fly with `--compile-remote`
+
+Example remote compile:
+
+```bash
+girlfriend-generator \
+  --provider remote \
+  --server-base-url http://127.0.0.1:8787 \
+  --compile-remote \
+  --display-name 유나 \
+  --relationship-mode girlfriend \
+  --context-notes "성수에서 일하는 디자이너 느낌" \
+  --context-link https://instagram.com/yuna.example \
+  --context-snippet "자기야 뭐 해?"
+```
+
 ## Product Boundary
 
 This repository is intentionally scoped to the terminal-only CLI client. The install, smoke checks, package entrypoints, and docs are optimized around the local Rich chat loop, persona files, transcript export, voice hooks, and ECC trace visibility.

@@ -233,6 +233,7 @@ def run_chat_app(config: AppConfig) -> int:
                 )
                 trace.pending_nudge_in = session.seconds_until_nudge(now)
                 trace.pending_initiative_in = session.seconds_until_initiative(now)
+                _sync_provider_trace(provider, trace)
                 trace.status_line = status_line
 
                 poll_timeout = (
@@ -744,6 +745,17 @@ def _render_trace(trace: RuntimeTrace, persona: Persona, session: ConversationSe
     table.add_row("Voice out", trace.voice_output_name)
     table.add_row("Voice in", trace.voice_input_name)
     table.add_row("Persona", trace.persona_path.name)
+    table.add_row("Remote ref", trace.remote_persona_ref or "-")
+    table.add_row(
+        "Remote ver",
+        str(trace.remote_persona_version) if trace.remote_persona_version is not None else "-",
+    )
+    table.add_row("Emotion", trace.remote_emotion or "-")
+    table.add_row("Init why", trace.remote_initiative_reason or "-")
+    table.add_row(
+        "Memory",
+        ", ".join(trace.remote_memory_hits[:3]) if trace.remote_memory_hits else "-",
+    )
     table.add_row("Nudge in", str(trace.pending_nudge_in) if trace.pending_nudge_in is not None else "-")
     table.add_row(
         "Init in",
@@ -786,6 +798,11 @@ def _build_render_key(
         trace.pending_reply_kind,
         trace.pending_nudge_in,
         trace.pending_initiative_in,
+        trace.remote_persona_ref,
+        trace.remote_persona_version,
+        trace.remote_emotion,
+        trace.remote_initiative_reason,
+        tuple(trace.remote_memory_hits),
         trace.status_line,
         session.affection_score,
     )
@@ -811,3 +828,24 @@ def _assistant_busy(
 
 def _supports_interactive_chat() -> bool:
     return sys.stdin.isatty() and sys.stdout.isatty()
+
+
+def _sync_provider_trace(provider: Any, trace: RuntimeTrace) -> None:
+    provider_trace = getattr(provider, "last_trace", None)
+    if not isinstance(provider_trace, dict):
+        return
+    trace.remote_persona_ref = (
+        str(provider_trace.get("persona_ref")) if provider_trace.get("persona_ref") else None
+    )
+    version = provider_trace.get("persona_version")
+    trace.remote_persona_version = int(version) if isinstance(version, int) else None
+    trace.remote_emotion = (
+        str(provider_trace.get("emotion")) if provider_trace.get("emotion") else None
+    )
+    trace.remote_initiative_reason = (
+        str(provider_trace.get("initiative_reason"))
+        if provider_trace.get("initiative_reason")
+        else None
+    )
+    memory_hits = provider_trace.get("memory_hits")
+    trace.remote_memory_hits = [str(item) for item in memory_hits] if isinstance(memory_hits, list) else []

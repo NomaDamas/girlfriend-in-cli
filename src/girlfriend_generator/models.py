@@ -119,6 +119,11 @@ class RuntimeTrace:
     performance_mode: str
     voice_output_name: str
     voice_input_name: str
+    remote_persona_ref: str | None = None
+    remote_persona_version: int | None = None
+    remote_emotion: str | None = None
+    remote_initiative_reason: str | None = None
+    remote_memory_hits: list[str] = field(default_factory=list)
     ecc_mode: str = "project-local"
     skills_root: str = ".agents/skills"
     uses_global_codex_defaults: bool = False

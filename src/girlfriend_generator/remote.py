@@ -66,6 +66,7 @@ class RemoteProvider:
     def __init__(self, base_url: str, persona_id: str) -> None:
         self.base_url = base_url.rstrip("/")
         self.persona_id = persona_id
+        self.last_trace: dict[str, object] = {}
 
     def generate_reply(
         self,
@@ -83,6 +84,13 @@ class RemoteProvider:
                 "affection_score": affection_score,
             },
         )
+        self.last_trace = {
+            "emotion": payload.get("emotion"),
+            "initiative_reason": payload.get("initiative_reason"),
+            "memory_hits": list(payload.get("memory_hits", [])),
+            "persona_version": payload.get("persona_version"),
+            "persona_ref": self.persona_id,
+        }
         return ProviderReply(
             text=str(payload["text"]),
             typing_seconds=float(payload.get("typing_delay_ms", 800)) / 1000.0,
@@ -103,6 +111,13 @@ class RemoteProvider:
                 "affection_score": affection_score,
             },
         )
+        self.last_trace = {
+            "emotion": None,
+            "initiative_reason": payload.get("reason"),
+            "memory_hits": [],
+            "persona_version": payload.get("persona_version"),
+            "persona_ref": self.persona_id,
+        }
         return str(payload["text"])
 
 

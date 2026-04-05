@@ -10,6 +10,7 @@ from girlfriend_generator.app import (
     _handle_key,
     _render_screen,
     _render_trace,
+    _sync_provider_trace,
     run_chat_app,
 )
 from girlfriend_generator.engine import ConversationSession
@@ -206,6 +207,34 @@ def test_render_trace_shows_idle_timers() -> None:
     assert "external-command" in rendered
     assert "project-local" in rendered
     assert "Global cfg" in rendered
+
+
+def test_sync_provider_trace_exposes_remote_metadata() -> None:
+    trace = RuntimeTrace(
+        persona_path=Path("personas/han-seo-jin-crush.json"),
+        provider_name="remote",
+        provider_model=None,
+        performance_mode="turbo",
+        voice_output_name="off",
+        voice_input_name="off",
+    )
+
+    class DummyProvider:
+        last_trace = {
+            "persona_ref": "persona_1",
+            "persona_version": 3,
+            "emotion": "playful",
+            "initiative_reason": "scheduler",
+            "memory_hits": ["late_reply_pattern"],
+        }
+
+    _sync_provider_trace(DummyProvider(), trace)
+
+    assert trace.remote_persona_ref == "persona_1"
+    assert trace.remote_persona_version == 3
+    assert trace.remote_emotion == "playful"
+    assert trace.remote_initiative_reason == "scheduler"
+    assert trace.remote_memory_hits == ["late_reply_pattern"]
 
 
 def test_trace_command_toggles_panel_visibility(tmp_path: Path) -> None:

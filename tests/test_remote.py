@@ -60,6 +60,7 @@ def test_remote_provider_uses_runtime_endpoints(monkeypatch) -> None:
     assert initiative == "먼저 톡해봤어."
     assert called[0][0].endswith("/v1/chat/respond")
     assert called[1][0].endswith("/v1/chat/initiate")
+    assert provider.last_trace["persona_ref"] == "persona_1"
 
 
 def test_compile_remote_persona_uses_ingest_then_compile(monkeypatch) -> None:

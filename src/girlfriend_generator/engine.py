@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
-from .models import ChatMessage, Persona, TickResult
+from .models import ChatMessage, MoodState, MoodType, Persona, TickResult
 
 
 def utc_now() -> datetime:
@@ -20,6 +20,8 @@ class ConversationSession:
     nudge_count: int = 0
     initiative_due_at: datetime | None = None
     initiative_count: int = 0
+    mood: MoodState = field(default_factory=MoodState)
+    last_activity_at: datetime | None = None
 
     def bootstrap(self, now: datetime | None = None) -> None:
         now = now or utc_now()
@@ -33,8 +35,9 @@ class ConversationSession:
         self.nudge_due_at = None
         self.nudge_count = 0
         self.schedule_initiative(now)
-        if any(token in text for token in ("고마워", "좋아", "보고싶", "재밌", "설레")):
-            self.affection_score = min(100, self.affection_score + 6)
+        self._update_affection(text, now)
+        self._update_mood_from_text(text)
+        self.last_activity_at = now
 
     def add_assistant_message(
         self,
@@ -123,6 +126,42 @@ class ConversationSession:
         self.initiative_count += 1
         self.schedule_initiative(now)
         return text
+
+    def _update_affection(self, text: str, now: datetime) -> None:
+        positive_tokens = ("고마워", "좋아", "보고싶", "재밌", "설레", "사랑", "예쁘", "최고", "행복", "귀여")
+        negative_tokens = ("짜증", "싫어", "별로", "귀찮", "몰라", "됐어", "ㅋ")
+        if any(token in text for token in positive_tokens):
+            self.affection_score = min(100, self.affection_score + 5)
+        if any(token in text for token in negative_tokens):
+            self.affection_score = max(0, self.affection_score - 3)
+        if len(text.strip()) <= 2:
+            self.affection_score = max(0, self.affection_score - 1)
+        if self.last_activity_at:
+            gap = (now - self.last_activity_at).total_seconds()
+            if gap > 300:
+                decay = min(8, int(gap / 300))
+                self.affection_score = max(0, self.affection_score - decay)
+
+    def _update_mood_from_text(self, text: str) -> None:
+        mood = self._detect_mood(text)
+        self.mood.shift(mood)
+
+    @staticmethod
+    def _detect_mood(text: str) -> MoodType:
+        lower = text.lower()
+        if any(t in lower for t in ("ㅋㅋ", "ㅎㅎ", "재밌", "웃기")):
+            return "playful"
+        if any(t in lower for t in ("보고싶", "사랑", "설레", "좋아해")):
+            return "flirty"
+        if any(t in lower for t in ("고마워", "행복", "좋다", "최고")):
+            return "happy"
+        if any(t in lower for t in ("힘들", "걱정", "피곤", "아프")):
+            return "worried"
+        if any(t in lower for t in ("짜증", "싫", "별로", "귀찮")):
+            return "sulky"
+        if any(t in lower for t in ("대박", "진짜", "헐", "와")):
+            return "excited"
+        return "neutral"
 
     def tick(self, provider: object, now: datetime | None = None) -> TickResult:
         now = now or utc_now()

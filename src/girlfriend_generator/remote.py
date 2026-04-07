@@ -4,7 +4,7 @@ import json
 from urllib import request
 from urllib.parse import quote
 
-from .models import ChatMessage, Persona, ProviderReply
+from .models import ChatMessage, MoodType, Persona, ProviderReply
 from .personas import persona_from_pack
 
 
@@ -74,6 +74,7 @@ class RemoteProvider:
         history: list[ChatMessage],
         user_text: str,
         affection_score: int,
+        mood: MoodType = "neutral",
     ) -> ProviderReply:
         payload = _post_json(
             f"{self.base_url}/v1/chat/respond",
@@ -82,6 +83,7 @@ class RemoteProvider:
                 "history": [_message_to_dict(item) for item in history],
                 "user_message": user_text,
                 "affection_score": affection_score,
+                "mood": mood,
             },
         )
         self.last_trace = {

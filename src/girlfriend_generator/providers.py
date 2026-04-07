@@ -4,7 +4,7 @@ import os
 import random
 from dataclasses import dataclass
 
-from .models import ChatMessage, Persona, ProviderReply
+from .models import ChatMessage, MoodType, Persona, ProviderReply
 from .remote import RemoteProvider
 
 
@@ -32,6 +32,7 @@ class HeuristicProvider:
         history: list[ChatMessage],
         user_text: str,
         affection_score: int,
+        mood: MoodType = "neutral",
     ) -> ProviderReply:
         lower = user_text.lower()
         opener = self._pick_opener(persona.relationship_mode, lower)
@@ -39,12 +40,13 @@ class HeuristicProvider:
         hook = self._pick_hook(persona, affection_score)
         question = self._pick_question(persona, lower)
         style = self._pick_style_hook(persona)
-        text = f"{opener} {emotion} {hook} {style} {question}".strip()
+        mood_flavor = self._mood_flavor(mood, persona.relationship_mode)
+        text = f"{opener} {emotion} {hook} {style} {mood_flavor} {question}".strip()
         typing_seconds = self._typing_seconds(persona, text)
         return ProviderReply(
             text=text,
             typing_seconds=typing_seconds,
-            trace_note=f"{self.performance_mode}-heuristic: zero-network local reply",
+            trace_note=f"{self.performance_mode}-heuristic: mood={mood}",
         )
 
     def generate_initiative(
@@ -142,6 +144,44 @@ class HeuristicProvider:
             return chosen
         return f"그리고 네가 {chosen} 같은 결로 말하면 persona 유지가 훨씬 잘 돼."
 
+    def _mood_flavor(self, mood: MoodType, relationship_mode: str) -> str:
+        flavors: dict[str, list[str]] = {
+            "happy": [
+                "기분 좋은 거 다 티나 ㅋㅋ",
+                "이 텐션 좋다, 계속 이렇게 가자.",
+                "아 오늘 왜 이렇게 기분 좋지?",
+            ],
+            "playful": [
+                "ㅋㅋㅋ 지금 장난기 뿜뿜이네.",
+                "이 분위기면 나도 같이 놀아줘야지.",
+                "야, 오늘 텐션 미쳤다 ㅋㅋ",
+            ],
+            "sulky": [
+                "흠, 좀 아쉬운데.",
+                "그렇게 나오면 나도 좀 삐지는 거야.",
+                "아 진짜... 좀 서운하긴 하다.",
+            ],
+            "flirty": [
+                "지금 그런 말 하면 심장이 좀 그렇지 않아?",
+                "이런 분위기에서 나 어떡하라고.",
+                "그 말, 진심이면 나 좀 흔들리는데.",
+            ],
+            "worried": [
+                "괜찮아? 무리하지 마.",
+                "힘들면 말해, 내가 들어줄게.",
+                "좀 쉬어도 돼, 나 여기 있으니까.",
+            ],
+            "excited": [
+                "오 진짜?! 대박이다!",
+                "와, 그거 완전 좋은데!",
+                "헐 나도 흥분돼!",
+            ],
+        }
+        options = flavors.get(mood, [])
+        if not options:
+            return ""
+        return self.rng.choice(options)
+
 
 class OpenAIProvider:
     def __init__(self, model: str | None = None) -> None:
@@ -153,6 +193,7 @@ class OpenAIProvider:
         history: list[ChatMessage],
         user_text: str,
         affection_score: int,
+        mood: MoodType = "neutral",
     ) -> ProviderReply:
         if not os.getenv("OPENAI_API_KEY"):
             raise RuntimeError("OPENAI_API_KEY is not set.")
@@ -169,7 +210,7 @@ class OpenAIProvider:
                     "content": [
                         {
                             "type": "input_text",
-                            "text": _build_system_prompt(persona, affection_score),
+                            "text": _build_system_prompt(persona, affection_score, mood),
                         }
                     ],
                 },
@@ -191,7 +232,7 @@ class OpenAIProvider:
                 persona.typing.max_seconds,
                 max(persona.typing.min_seconds, len(text) / 18.0),
             ),
-            trace_note=f"openai:{self.model}",
+            trace_note=f"openai:{self.model} mood={mood}",
         )
 
     def generate_initiative(
@@ -219,6 +260,7 @@ class AnthropicProvider:
         history: list[ChatMessage],
         user_text: str,
         affection_score: int,
+        mood: MoodType = "neutral",
     ) -> ProviderReply:
         if not os.getenv("ANTHROPIC_API_KEY"):
             raise RuntimeError("ANTHROPIC_API_KEY is not set.")
@@ -232,7 +274,7 @@ class AnthropicProvider:
         response = client.messages.create(
             model=self.model,
             max_tokens=220,
-            system=_build_system_prompt(persona, affection_score),
+            system=_build_system_prompt(persona, affection_score, mood),
             messages=[
                 {
                     "role": "user",
@@ -281,7 +323,7 @@ def build_provider(config: ProviderConfig):
     raise ValueError(f"Unknown provider: {config.name}")
 
 
-def _build_system_prompt(persona: Persona, affection_score: int) -> str:
+def _build_system_prompt(persona: Persona, affection_score: int, mood: MoodType = "neutral") -> str:
     return (
         "You are simulating a texting conversation in Korean inside a terminal-only chat UI. "
         "Stay warm, playful, and believable. Keep replies concise, emotionally legible, and "
@@ -293,6 +335,7 @@ def _build_system_prompt(persona: Persona, affection_score: int) -> str:
         f"Context summary: {persona.context_summary or 'None'}. "
         f"Signature phrases: {', '.join(persona.style_profile.signature_phrases) or 'None'}. "
         f"Affection score: {affection_score}/100. "
+        f"Current user mood: {mood}. Respond in a way that acknowledges and naturally reacts to this mood. "
         f"Additional hint: {persona.provider_system_hint or 'None'}"
     )
 

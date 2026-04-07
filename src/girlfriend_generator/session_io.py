@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
@@ -91,6 +92,23 @@ def render_markdown(persona: Persona, messages: list[ChatMessage]) -> str:
         lines.append(message.text)
         lines.append("")
     return "\n".join(lines).strip() + "\n"
+
+
+def load_session_messages(path: Path) -> list[ChatMessage]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    messages = []
+    for item in payload.get("messages", []):
+        created_at = datetime.fromisoformat(item["created_at"])
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        messages.append(
+            ChatMessage(
+                role=item["role"],
+                text=item["text"],
+                created_at=created_at,
+            )
+        )
+    return messages
 
 
 def slugify(value: str) -> str:

@@ -21,10 +21,10 @@ from rich.table import Table
 from rich.text import Text
 
 from .engine import ConversationSession, utc_now
-from .models import ChatMessage, Persona, ProviderReply, RuntimeTrace
+from .models import MOOD_EMOJI, ChatMessage, Persona, ProviderReply, RuntimeTrace
 from .personas import load_persona
 from .providers import ProviderConfig, build_provider
-from .session_io import export_session
+from .session_io import export_session, load_session_messages
 from .voice import build_voice_input, build_voice_output
 
 
@@ -44,6 +44,7 @@ class AppConfig:
     input_poll_idle_seconds: float = 0.08
     session_dir: Path = Path("sessions")
     export_on_exit: bool = True
+    resume_path: Path | None = None
 
 
 @dataclass(slots=True)
@@ -142,7 +143,14 @@ def run_chat_app(config: AppConfig) -> int:
         voice_input_name=voice_input.name,
     )
     session = ConversationSession(persona=persona)
-    session.bootstrap()
+    if config.resume_path and config.resume_path.exists():
+        resumed_messages = load_session_messages(config.resume_path)
+        session.messages = resumed_messages
+        session.awaiting_user_reply = False
+        session.schedule_initiative()
+        session.add_system_message(f"Session resumed ({len(resumed_messages)} messages loaded)")
+    else:
+        session.bootstrap()
 
     draft = ""
     status_line = "Enter to send. /help for commands."
@@ -340,6 +348,7 @@ def _finish_job(
                 session.recent_history(),
                 transcript,
                 session.affection_score,
+                session.mood.current,
             ),
             previous_delivery,
             "voice transcript captured",
@@ -432,6 +441,7 @@ def _handle_key(
                 session_dir=session_dir,
             )
         session.add_user_message(text)
+        mood = session.mood.current
         job = BackgroundJob(
             "reply",
             provider.generate_reply,
@@ -439,6 +449,7 @@ def _handle_key(
             session.recent_history(),
             text,
             session.affection_score,
+            mood,
         )
         return {
             "draft": "",
@@ -660,24 +671,36 @@ def _render_screen(
 
 
 def _render_header(persona: Persona, session: ConversationSession):
+    mood_emoji = MOOD_EMOJI.get(session.mood.current, "")
+    affection = session.affection_score
+    bar_filled = affection // 5
+    bar_empty = 20 - bar_filled
+    affection_bar = f"[red]{'█' * bar_filled}[/red][dim]{'░' * bar_empty}[/dim] {affection}/100"
     subtitle = (
         f"{persona.name} · {persona.relationship_mode} · {persona.age}세 · "
         f"관심사 {', '.join(persona.interests[:3])}"
     )
     body = Text.assemble(
         ("CLI Romance Simulator", "bold white"),
+        (f"  {mood_emoji} {session.mood.current}", ""),
         ("\n"),
         (subtitle, f"bold {persona.accent_color}"),
         ("\n"),
         (persona.situation, "dim"),
     )
-    return Panel(body, border_style=persona.accent_color, title="Session")
+    return Panel(body, border_style=persona.accent_color, title="Session", subtitle=f"Affection {affection_bar}")
 
 
 def _render_chat(console: Console, session: ConversationSession, assistant_typing: bool):
     available_width = max(60, console.size.width - 38)
     history = session.messages[-12:]
-    blocks = [_render_message(message, available_width) for message in history]
+    blocks = []
+    for i, message in enumerate(history):
+        is_read = True
+        if message.role == "user":
+            remaining = history[i + 1:]
+            is_read = any(m.role == "assistant" for m in remaining)
+        blocks.append(_render_message(message, available_width, is_read=is_read))
     if assistant_typing:
         blocks.append(
             Align.left(
@@ -694,14 +717,15 @@ def _render_chat(console: Console, session: ConversationSession, assistant_typin
     return Panel(Group(*blocks), title="Chat", border_style="cyan")
 
 
-def _render_message(message: ChatMessage, width: int):
+def _render_message(message: ChatMessage, width: int, is_read: bool = True):
     bubble_width = min(width, max(28, width - 6))
     timestamp = message.created_at.strftime("%H:%M")
     if message.role == "user":
+        read_mark = " ✓✓" if is_read else " ✓"
         return Align.right(
             Panel(
                 Text(message.text),
-                title=f"You · {timestamp}",
+                title=f"You · {timestamp}{read_mark}",
                 border_style="bright_blue",
                 width=bubble_width,
             )
@@ -765,6 +789,8 @@ def _render_trace(trace: RuntimeTrace, persona: Persona, session: ConversationSe
     )
     table.add_row("Job", trace.pending_reply_kind)
     table.add_row("Global cfg", "no")
+    mood_emoji = MOOD_EMOJI.get(session.mood.current, "")
+    table.add_row("Mood", f"{mood_emoji} {session.mood.current} ({session.mood.intensity:.1f})")
     table.add_row("Affection", f"{session.affection_score}/100")
     table.add_row("Trace", trace.status_line)
     bullet_list = "\n".join(f"- {item}" for item in persona.soft_spots[:3])
@@ -805,6 +831,8 @@ def _build_render_key(
         tuple(trace.remote_memory_hits),
         trace.status_line,
         session.affection_score,
+        session.mood.current,
+        session.mood.intensity,
     )
 
 

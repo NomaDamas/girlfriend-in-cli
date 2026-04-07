@@ -6,6 +6,17 @@ from pathlib import Path
 from typing import Literal
 
 MessageRole = Literal["user", "assistant", "system"]
+MoodType = Literal["neutral", "happy", "playful", "sulky", "excited", "worried", "flirty"]
+
+MOOD_EMOJI: dict[str, str] = {
+    "neutral": "😐",
+    "happy": "😊",
+    "playful": "😜",
+    "sulky": "😒",
+    "excited": "🥰",
+    "worried": "😟",
+    "flirty": "💕",
+}
 
 
 @dataclass(slots=True)
@@ -102,6 +113,29 @@ class ProviderReply:
     text: str
     typing_seconds: float
     trace_note: str
+
+
+@dataclass(slots=True)
+class MoodState:
+    current: MoodType = "neutral"
+    intensity: float = 0.5  # 0.0 to 1.0
+    turns_in_mood: int = 0
+
+    def shift(self, new_mood: MoodType, intensity: float = 0.6) -> None:
+        if new_mood == self.current:
+            self.intensity = min(1.0, self.intensity + 0.1)
+            self.turns_in_mood += 1
+        else:
+            self.current = new_mood
+            self.intensity = max(0.3, intensity)
+            self.turns_in_mood = 0
+
+    def decay(self) -> None:
+        self.turns_in_mood += 1
+        if self.turns_in_mood > 4 and self.current != "neutral":
+            self.current = "neutral"
+            self.intensity = 0.5
+            self.turns_in_mood = 0
 
 
 @dataclass(slots=True)

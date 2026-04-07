@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import json
+import sys
 from pathlib import Path
 
 from .app import AppConfig, run_chat_app
@@ -128,6 +130,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="List bundled personas and exit.",
     )
+    parser.add_argument(
+        "--resume",
+        type=Path,
+        help="Resume a previous session from an exported JSON file.",
+    )
     return parser
 
 
@@ -183,10 +190,21 @@ def main() -> int:
                 "--provider remote requires --persona-id, --persona-slug, or --compile-remote."
             )
     else:
-        persona_path = args.persona or (bundled_personas[0] if bundled_personas else None)
-        if persona_path is None:
+        if args.persona:
+            persona_path = resolve_persona_path(args.persona)
+        elif len(bundled_personas) > 1 and sys.stdin.isatty():
+            persona_path = _pick_persona_interactive(bundled_personas)
+        elif bundled_personas:
+            persona_path = bundled_personas[0]
+        else:
             parser.error("No persona file found. Add one under personas/ or pass --persona.")
         persona_path = resolve_persona_path(persona_path)
+
+    resume_path = None
+    if getattr(args, "resume", None):
+        resume_path = Path(args.resume).expanduser().resolve()
+        if not resume_path.exists():
+            parser.error(f"Resume file not found: {resume_path}")
 
     config = AppConfig(
         persona_path=persona_path,
@@ -201,5 +219,59 @@ def main() -> int:
         session_dir=resolve_session_dir(args.session_dir),
         export_on_exit=not args.no_export_on_exit,
         show_trace=not args.no_trace,
+        resume_path=resume_path,
     )
     return run_chat_app(config)
+
+
+def _pick_persona_interactive(personas: list[Path]) -> Path:
+    from rich.console import Console
+    from rich.panel import Panel
+    from rich.table import Table
+
+    console = Console()
+    summaries = []
+    for path in personas:
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            summaries.append({
+                "name": data.get("name", path.stem),
+                "age": data.get("age", "?"),
+                "mode": data.get("relationship_mode", "?"),
+                "situation": (data.get("situation") or "")[:60],
+            })
+        except Exception:
+            summaries.append({
+                "name": path.stem,
+                "age": "?",
+                "mode": "?",
+                "situation": "",
+            })
+
+    table = Table(title="Available Personas", border_style="magenta", show_lines=True)
+    table.add_column("#", style="bold cyan", width=3)
+    table.add_column("Name", style="bold white")
+    table.add_column("Age", style="dim")
+    table.add_column("Mode", style="magenta")
+    table.add_column("Situation", style="dim")
+
+    for i, summary in enumerate(summaries, 1):
+        table.add_row(
+            str(i),
+            summary["name"],
+            str(summary["age"]),
+            summary["mode"],
+            summary["situation"],
+        )
+
+    console.print(Panel(table, border_style="cyan", title="Persona Selection"))
+    while True:
+        try:
+            raw = input(f"\nSelect persona [1-{len(personas)}]: ").strip()
+            idx = int(raw) - 1
+            if 0 <= idx < len(personas):
+                console.print(f"  → {summaries[idx]['name']} selected\n", style="bold green")
+                return personas[idx]
+        except (ValueError, EOFError):
+            pass
+        console.print(f"  Enter a number between 1 and {len(personas)}.", style="red")

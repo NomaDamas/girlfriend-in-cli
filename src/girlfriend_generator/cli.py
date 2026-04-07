@@ -670,34 +670,101 @@ def _settings_menu(console: "Console", args: argparse.Namespace) -> None:  # typ
 
 def _api_key_guide(console: "Console") -> None:  # type: ignore[name-defined]
     import os
+    from .selector import MenuItem, arrow_select
 
-    console.print()
-    console.print("  [bold]API Key Setup[/bold]")
-    console.print("  [dim]─────────────────────────────────────────[/dim]")
-    console.print()
+    while True:
+        has_openai = bool(os.environ.get("OPENAI_API_KEY"))
+        has_anthropic = bool(os.environ.get("ANTHROPIC_API_KEY"))
 
-    has_openai = bool(os.environ.get("OPENAI_API_KEY"))
-    has_anthropic = bool(os.environ.get("ANTHROPIC_API_KEY"))
+        openai_status = "[green]set[/green]" if has_openai else "[red]not set[/red]"
+        anthropic_status = "[green]set[/green]" if has_anthropic else "[red]not set[/red]"
 
-    console.print(f"  OpenAI     {'[green]set[/green]' if has_openai else '[red]not set[/red]'}")
-    console.print(f"  Anthropic  {'[green]set[/green]' if has_anthropic else '[red]not set[/red]'}")
-    console.print()
-    console.print("  [dim]To set API keys, add to your shell profile (~/.zshrc):[/dim]")
-    console.print()
-    console.print('  [cyan]export OPENAI_API_KEY="sk-..."[/cyan]')
-    console.print('  [cyan]export ANTHROPIC_API_KEY="sk-ant-..."[/cyan]')
-    console.print()
-    console.print("  [dim]Then restart your terminal or run: source ~/.zshrc[/dim]")
-    console.print()
-    console.print("  [dim]Get your keys at:[/dim]")
-    console.print("  [dim]OpenAI:    platform.openai.com/api-keys[/dim]")
-    console.print("  [dim]Anthropic: console.anthropic.com/settings/keys[/dim]")
+        items = [
+            MenuItem(
+                f"OpenAI Key  ({('set' if has_openai else 'not set')})",
+                "Paste your OpenAI API key here",
+                icon="🔑",
+            ),
+            MenuItem(
+                f"Anthropic Key  ({('set' if has_anthropic else 'not set')})",
+                "Paste your Anthropic API key here",
+                icon="🔑",
+            ),
+        ]
+
+        choice = arrow_select(
+            console, items,
+            title="API Key Setup",
+            border_style="bright_yellow",
+        )
+        if choice is None:
+            return
+
+        if choice == 0:
+            _set_api_key(console, "OPENAI_API_KEY", "OpenAI", "sk-")
+        elif choice == 1:
+            _set_api_key(console, "ANTHROPIC_API_KEY", "Anthropic", "sk-ant-")
+
+
+def _set_api_key(console: "Console", env_var: str, provider_name: str, prefix: str) -> None:  # type: ignore[name-defined]
+    import os
+
+    current = os.environ.get(env_var, "")
+    if current:
+        masked = current[:8] + "..." + current[-4:]
+        console.print(f"\n  [dim]Current: {masked}[/dim]")
+
+    console.print(f"\n  [bold]Paste your {provider_name} API key:[/bold]")
+    console.print(f"  [dim]Get one at: {'platform.openai.com/api-keys' if 'OPENAI' in env_var else 'console.anthropic.com/settings/keys'}[/dim]")
+    console.print(f"  [dim]Should start with: {prefix}[/dim]")
     console.print()
 
     try:
-        input("  [dim]Press Enter to go back...[/dim]")
+        key = input("  Key: ").strip()
     except (EOFError, KeyboardInterrupt):
-        pass
+        return
+
+    if not key:
+        console.print("  [dim]Cancelled.[/dim]\n")
+        return
+
+    if not key.startswith(prefix):
+        console.print(f"  [yellow]Warning: key doesn't start with '{prefix}'. Saving anyway.[/yellow]\n")
+
+    # Set for current session
+    os.environ[env_var] = key
+
+    # Save to ~/.zshrc for persistence
+    saved = _save_key_to_shell_profile(env_var, key)
+    masked = key[:8] + "..." + key[-4:]
+    console.print(f"  [green]Saved: {masked}[/green]")
+    if saved:
+        console.print(f"  [green]Added to ~/.zshrc (persistent across sessions)[/green]")
+    else:
+        console.print(f"  [yellow]Saved for this session only. Add manually to ~/.zshrc for persistence.[/yellow]")
+    console.print()
+
+
+def _save_key_to_shell_profile(env_var: str, key: str) -> bool:
+    """Append export to ~/.zshrc. Returns True if successful."""
+    from pathlib import Path
+
+    rc_path = Path.home() / ".zshrc"
+    if not rc_path.exists():
+        rc_path = Path.home() / ".bashrc"
+
+    try:
+        content = rc_path.read_text(encoding="utf-8") if rc_path.exists() else ""
+
+        # Remove existing line for this var
+        lines = content.splitlines()
+        lines = [l for l in lines if not l.strip().startswith(f"export {env_var}=")]
+        lines.append(f'export {env_var}="{key}"')
+
+        rc_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        return True
+    except Exception:
+        return False
 
 
 def _pick_persona_interactive(personas: list[Path], console: "Console | None" = None) -> Path | None:  # type: ignore[name-defined]

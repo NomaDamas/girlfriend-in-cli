@@ -656,9 +656,9 @@ def _render_screen(
 ):
     layout = Layout(name="root")
     layout.split_column(
-        Layout(_render_header(persona, session), size=5),
+        Layout(_render_header(persona, session), size=4),
         Layout(name="middle"),
-        Layout(_render_composer(draft, status_line, user_typing), size=6),
+        Layout(_render_composer(draft, status_line, user_typing), size=5),
     )
     if show_trace:
         layout["middle"].split_row(
@@ -675,20 +675,29 @@ def _render_header(persona: Persona, session: ConversationSession):
     affection = session.affection_score
     bar_filled = affection // 5
     bar_empty = 20 - bar_filled
-    affection_bar = f"[red]{'█' * bar_filled}[/red][dim]{'░' * bar_empty}[/dim] {affection}/100"
-    subtitle = (
-        f"{persona.name} · {persona.relationship_mode} · {persona.age}세 · "
-        f"관심사 {', '.join(persona.interests[:3])}"
-    )
+    hearts = "".join("❤️" if i < bar_filled // 4 else "🤍" for i in range(5))
+    affection_bar = f"{hearts}  [bold]{affection}[/bold][dim]/100[/dim]"
+
+    mode_icon = {"girlfriend": "💕", "crush": "💘"}.get(persona.relationship_mode, "💬")
+
     body = Text.assemble(
-        ("CLI Romance Simulator", "bold white"),
-        (f"  {mood_emoji} {session.mood.current}", ""),
-        ("\n"),
-        (subtitle, f"bold {persona.accent_color}"),
-        ("\n"),
+        (f" {mode_icon} ", ""),
+        (persona.name, f"bold {persona.accent_color}"),
+        (f"  {persona.age}세", "dim"),
+        ("  ·  ", "dim"),
+        (persona.relationship_mode, f"italic {persona.accent_color}"),
+        ("  ·  ", "dim"),
+        (f"{mood_emoji} {session.mood.current}", ""),
+        ("\n ", ""),
         (persona.situation, "dim"),
     )
-    return Panel(body, border_style=persona.accent_color, title="Session", subtitle=f"Affection {affection_bar}")
+    return Panel(
+        body,
+        border_style=persona.accent_color,
+        title=f"[bold {persona.accent_color}]{persona.name}[/bold {persona.accent_color}]",
+        subtitle=affection_bar,
+        padding=(0, 1),
+    )
 
 
 def _render_chat(console: Console, session: ConversationSession, assistant_typing: bool):
@@ -700,102 +709,128 @@ def _render_chat(console: Console, session: ConversationSession, assistant_typin
         if message.role == "user":
             remaining = history[i + 1:]
             is_read = any(m.role == "assistant" for m in remaining)
-        blocks.append(_render_message(message, available_width, is_read=is_read))
+        blocks.append(_render_message(
+            message, available_width,
+            is_read=is_read,
+            persona_name=session.persona.name,
+            accent=session.persona.accent_color,
+        ))
     if assistant_typing:
-        blocks.append(
-            Align.left(
-                Panel(
-                    Text("...", style="italic"),
-                    border_style=session.persona.accent_color,
-                    title=f"{session.persona.name} typing",
-                    width=min(available_width, 28),
-                )
-            )
+        dots = Text.assemble(
+            (f" {session.persona.name}  ", f"bold {session.persona.accent_color}"),
+            ("●", "bright_white"),
+            ("●", "dim white"),
+            ("●", "dim"),
         )
+        blocks.append(Align.left(
+            Panel(dots, border_style=session.persona.accent_color, width=min(available_width, 30), padding=(0, 1))
+        ))
     if not blocks:
-        blocks.append(Panel("No messages yet.", border_style="dim"))
-    return Panel(Group(*blocks), title="Chat", border_style="cyan")
+        blocks.append(Align.center(
+            Text("\n  Start the conversation...\n", style="dim italic")
+        ))
+    return Panel(Group(*blocks), border_style="grey37", padding=(0, 0))
 
 
-def _render_message(message: ChatMessage, width: int, is_read: bool = True):
-    bubble_width = min(width, max(28, width - 6))
+def _render_message(
+    message: ChatMessage,
+    width: int,
+    is_read: bool = True,
+    persona_name: str = "",
+    accent: str = "magenta",
+):
+    bubble_width = min(width, max(24, int(width * 0.65)))
     timestamp = message.created_at.strftime("%H:%M")
     if message.role == "user":
-        read_mark = " ✓✓" if is_read else " ✓"
+        read_mark = "[bright_cyan]✓✓[/bright_cyan]" if is_read else "[dim]✓[/dim]"
+        content = Text(message.text, style="white")
         return Align.right(
             Panel(
-                Text(message.text),
-                title=f"You · {timestamp}{read_mark}",
+                content,
                 border_style="bright_blue",
+                subtitle=f"[dim]{timestamp}[/dim] {read_mark}",
+                subtitle_align="right",
                 width=bubble_width,
+                padding=(0, 1),
             )
         )
     if message.role == "assistant":
+        content = Text(message.text, style="white")
         return Align.left(
             Panel(
-                Text(message.text),
-                title=f"{timestamp}",
-                border_style="magenta",
+                content,
+                border_style=accent,
+                title=f"[bold {accent}]{persona_name}[/bold {accent}]",
+                title_align="left",
+                subtitle=f"[dim]{timestamp}[/dim]",
+                subtitle_align="left",
                 width=bubble_width,
+                padding=(0, 1),
             )
         )
     return Align.center(
-        Panel(
-            Text(message.text, style="dim"),
-            border_style="dim",
-            width=min(width, 58),
-        )
+        Text(f"── {message.text} ──", style="dim italic"),
     )
 
 
 def _render_composer(draft: str, status_line: str, user_typing: bool):
-    prompt = draft if draft else "[dim]메시지를 입력하세요...[/dim]"
-    footer = f"{status_line} | Enter send | Esc clear | /quit exit"
-    title = "You are typing..." if user_typing else "Composer"
-    return Panel(prompt, title=title, subtitle=footer, border_style="bright_blue")
+    if draft:
+        cursor = "[blink bright_white]|[/blink bright_white]"
+        prompt = f" {draft}{cursor}"
+    else:
+        prompt = " [dim italic]메시지를 입력하세요...[/dim italic]"
+    keys = "[dim]Enter[/dim] send  [dim]Esc[/dim] clear  [dim]/help[/dim] cmds  [dim]/quit[/dim] exit"
+    status = f"[dim italic]{status_line}[/dim italic]"
+    title = "[bright_blue]typing...[/bright_blue]" if user_typing else "[dim]message[/dim]"
+    return Panel(
+        f"{prompt}\n\n {status}",
+        title=title,
+        subtitle=keys,
+        border_style="bright_blue" if user_typing else "grey37",
+        padding=(0, 1),
+    )
 
 
 def _render_trace(trace: RuntimeTrace, persona: Persona, session: ConversationSession):
-    table = Table.grid(padding=(0, 1))
-    table.add_column(style="bold cyan", width=11)
-    table.add_column(style="white")
-    table.add_row("ECC mode", trace.ecc_mode)
-    table.add_row("AGENTS", "AGENTS.md + .codex/AGENTS.md")
-    table.add_row("Skills", trace.skills_root)
-    table.add_row("Skill set", "ECC local + romance-cli-sim")
-    table.add_row("Provider", trace.provider_name)
-    table.add_row("Model", trace.provider_model or "default")
-    table.add_row("Perf", trace.performance_mode)
-    table.add_row("Voice out", trace.voice_output_name)
-    table.add_row("Voice in", trace.voice_input_name)
-    table.add_row("Persona", trace.persona_path.name)
-    table.add_row("Remote ref", trace.remote_persona_ref or "-")
-    table.add_row(
-        "Remote ver",
-        str(trace.remote_persona_version) if trace.remote_persona_version is not None else "-",
-    )
-    table.add_row("Emotion", trace.remote_emotion or "-")
-    table.add_row("Init why", trace.remote_initiative_reason or "-")
-    table.add_row(
-        "Memory",
-        ", ".join(trace.remote_memory_hits[:3]) if trace.remote_memory_hits else "-",
-    )
-    table.add_row("Nudge in", str(trace.pending_nudge_in) if trace.pending_nudge_in is not None else "-")
-    table.add_row(
-        "Init in",
-        str(trace.pending_initiative_in)
-        if trace.pending_initiative_in is not None
-        else "-",
-    )
-    table.add_row("Job", trace.pending_reply_kind)
-    table.add_row("Global cfg", "no")
     mood_emoji = MOOD_EMOJI.get(session.mood.current, "")
-    table.add_row("Mood", f"{mood_emoji} {session.mood.current} ({session.mood.intensity:.1f})")
-    table.add_row("Affection", f"{session.affection_score}/100")
-    table.add_row("Trace", trace.status_line)
-    bullet_list = "\n".join(f"- {item}" for item in persona.soft_spots[:3])
-    body = Group(table, Panel(bullet_list, title="Soft Spots", border_style="dim"))
-    return Panel(body, title="ECC Trace", border_style="green")
+    aff = session.affection_score
+    aff_bar = f"[red]{'█' * (aff // 10)}[/red][dim]{'░' * (10 - aff // 10)}[/dim]"
+
+    table = Table.grid(padding=(0, 1))
+    table.add_column(style="dim", width=9)
+    table.add_column(style="white")
+
+    # Key stats at top
+    table.add_row("Mood", f"{mood_emoji} {session.mood.current}")
+    table.add_row("Affection", f"{aff_bar} {aff}")
+    table.add_row("", "")
+
+    # Provider info
+    table.add_row("Provider", f"[cyan]{trace.provider_name}[/cyan]")
+    table.add_row("Model", trace.provider_model or "[dim]default[/dim]")
+    table.add_row("Perf", f"[yellow]{trace.performance_mode}[/yellow]")
+    table.add_row("", "")
+
+    # Timers
+    nudge_str = f"[yellow]{trace.pending_nudge_in}s[/yellow]" if trace.pending_nudge_in is not None else "[dim]-[/dim]"
+    init_str = f"[cyan]{trace.pending_initiative_in}s[/cyan]" if trace.pending_initiative_in is not None else "[dim]-[/dim]"
+    table.add_row("Nudge", nudge_str)
+    table.add_row("Init", init_str)
+    table.add_row("Job", f"[green]{trace.pending_reply_kind}[/green]" if trace.pending_reply_kind != "idle" else "[dim]idle[/dim]")
+
+    # Remote info (only if present)
+    if trace.remote_emotion:
+        table.add_row("Emotion", trace.remote_emotion)
+    if trace.remote_initiative_reason:
+        table.add_row("Reason", trace.remote_initiative_reason)
+    if trace.remote_memory_hits:
+        table.add_row("Memory", ", ".join(trace.remote_memory_hits[:2]))
+
+    table.add_row("", "")
+    table.add_row("Voice", f"{trace.voice_output_name}/{trace.voice_input_name}")
+    table.add_row("Status", f"[dim]{trace.status_line[:20]}[/dim]")
+
+    return Panel(table, title="[dim]trace[/dim]", border_style="grey37", padding=(0, 0))
 
 
 def _build_render_key(

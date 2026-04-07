@@ -176,10 +176,8 @@ def test_render_screen_shows_typing_and_trace_visibility() -> None:
     )
     rendered = _render_to_text(renderable)
 
-    assert "ECC Trace" in rendered
-    assert "AGENTS.md +" in rendered
-    assert ".codex/AGENTS" in rendered
-    assert "You are typing..." in rendered
+    assert "trace" in rendered
+    assert "heuristic" in rendered
     assert "typing" in rendered
 
 
@@ -201,12 +199,9 @@ def test_render_trace_shows_idle_timers() -> None:
 
     rendered = _render_to_text(_render_trace(trace, persona, session))
 
-    assert "Init in" in rendered
+    assert "Init" in rendered
     assert "420" in rendered
-    assert "Voice in" in rendered
     assert "external-command" in rendered
-    assert "project-local" in rendered
-    assert "Global cfg" in rendered
 
 
 def test_sync_provider_trace_exposes_remote_metadata() -> None:

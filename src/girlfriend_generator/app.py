@@ -172,6 +172,7 @@ def run_chat_app(config: AppConfig) -> int:
     last_key_at = time.monotonic()
     show_trace = config.show_trace
     last_render_key: tuple[Any, ...] | None = None
+    scroll_offset = 0  # 0 = latest messages, positive = scrolled up
     voice_output_enabled = config.voice_output and voice_output.name != "off"
 
     try:
@@ -286,6 +287,12 @@ def run_chat_app(config: AppConfig) -> int:
                     pending_job = outcome["pending_job"]
                     show_trace = outcome["show_trace"]
                     voice_output_enabled = outcome["voice_output_enabled"]
+                    if "scroll_delta" in outcome:
+                        scroll_offset = max(0, scroll_offset + outcome["scroll_delta"])
+                        max_scroll = max(0, len(session.messages) - 4)
+                        scroll_offset = min(scroll_offset, max_scroll)
+                        if scroll_offset == 0:
+                            status_line = "Latest messages."
                     if outcome["quit"]:
                         live.update(
                             _render_screen(
@@ -311,6 +318,7 @@ def run_chat_app(config: AppConfig) -> int:
                     status_line=status_line,
                     assistant_typing=pending_job is not None or pending_delivery is not None,
                     user_typing=user_typing,
+                    scroll_offset=scroll_offset,
                 )
                 if render_key != last_render_key:
                     live.update(
@@ -325,6 +333,7 @@ def run_chat_app(config: AppConfig) -> int:
                             assistant_typing=pending_job is not None
                             or pending_delivery is not None,
                             user_typing=user_typing,
+                            scroll_offset=scroll_offset,
                         ),
                         refresh=True,
                     )
@@ -401,6 +410,27 @@ def _handle_key(
     session_dir: Path,
     music_player: Any = None,
 ) -> dict[str, Any]:
+    # Scroll: Page Up = \x1b[5~, Page Down = \x1b[6~, also [ and ] keys
+    if key == "\x1b[5~" or key == "[":
+        return {
+            "draft": draft,
+            "status_line": "Scrolled up. ] or PgDn to scroll down.",
+            "pending_job": pending_job,
+            "show_trace": show_trace,
+            "voice_output_enabled": voice_output_enabled,
+            "quit": False,
+            "scroll_delta": 3,
+        }
+    if key == "\x1b[6~" or key == "]":
+        return {
+            "draft": draft,
+            "status_line": "Scrolled down.",
+            "pending_job": pending_job,
+            "show_trace": show_trace,
+            "voice_output_enabled": voice_output_enabled,
+            "quit": False,
+            "scroll_delta": -3,
+        }
     if key in {"\x03", "\x04"}:
         return {
             "draft": draft,
@@ -733,6 +763,7 @@ def _render_screen(
     status_line: str,
     assistant_typing: bool,
     user_typing: bool,
+    scroll_offset: int = 0,
 ):
     layout = Layout(name="root")
     layout.split_column(
@@ -742,11 +773,11 @@ def _render_screen(
     )
     if show_trace:
         layout["middle"].split_row(
-            Layout(_render_chat(console, session, assistant_typing), ratio=3),
+            Layout(_render_chat(console, session, assistant_typing, scroll_offset), ratio=3),
             Layout(_render_trace(trace, persona, session), ratio=1),
         )
     else:
-        layout["middle"].update(_render_chat(console, session, assistant_typing))
+        layout["middle"].update(_render_chat(console, session, assistant_typing, scroll_offset))
     return layout
 
 
@@ -780,14 +811,15 @@ def _render_header(persona: Persona, session: ConversationSession):
     )
 
 
-def _render_chat(console: Console, session: ConversationSession, assistant_typing: bool):
+def _render_chat(console: Console, session: ConversationSession, assistant_typing: bool, scroll_offset: int = 0):
     available_width = max(60, console.size.width - 38)
-    # Dynamically fit messages to terminal height (header=4, composer=5, borders=2)
     available_lines = max(6, console.size.height - 11)
-    # Estimate ~3 lines per message, show as many recent messages as fit
-    max_messages = max(4, available_lines // 3)
-    # Filter out system messages for count, but show them
-    history = session.messages[-max_messages:]
+    # Apply scroll offset: trim from the end
+    if scroll_offset > 0 and len(session.messages) > scroll_offset:
+        visible_messages = session.messages[:-scroll_offset]
+    else:
+        visible_messages = session.messages
+    history = _fit_messages(visible_messages, available_lines)
     blocks = []
     for i, message in enumerate(history):
         is_read = True
@@ -814,7 +846,26 @@ def _render_chat(console: Console, session: ConversationSession, assistant_typin
         blocks.append(Align.center(
             Text("\n  Start the conversation...\n", style="dim italic")
         ))
-    return Panel(Group(*blocks), border_style="grey37", padding=(0, 0))
+    scroll_hint = f"[dim] ↑{scroll_offset} older messages [/dim]" if scroll_offset > 0 else ""
+    return Panel(Group(*blocks), border_style="grey37", padding=(0, 0), subtitle=scroll_hint)
+
+
+def _fit_messages(messages: list[ChatMessage], max_lines: int) -> list[ChatMessage]:
+    """Select recent messages that fit within available terminal lines."""
+    result: list[ChatMessage] = []
+    used_lines = 0
+    for msg in reversed(messages):
+        if msg.role == "system":
+            cost = 1
+        else:
+            # Estimate: 3 lines for panel chrome + ~1 line per 40 chars
+            cost = 3 + max(0, len(msg.text) // 40)
+        if used_lines + cost > max_lines and result:
+            break
+        result.append(msg)
+        used_lines += cost
+    result.reverse()
+    return result
 
 
 def _render_message(
@@ -826,9 +877,12 @@ def _render_message(
 ):
     bubble_width = min(width, max(24, int(width * 0.65)))
     timestamp = message.created_at.strftime("%H:%M")
+    # Truncate very long messages to prevent panel overflow
+    max_chars = bubble_width * 4
+    display_text = message.text if len(message.text) <= max_chars else message.text[:max_chars] + "..."
     if message.role == "user":
         read_mark = "[bright_cyan]✓✓[/bright_cyan]" if is_read else "[dim]✓[/dim]"
-        content = Text(message.text, style="white")
+        content = Text(display_text, style="white")
         return Align.right(
             Panel(
                 content,
@@ -840,7 +894,7 @@ def _render_message(
             )
         )
     if message.role == "assistant":
-        content = Text(message.text, style="white")
+        content = Text(display_text, style="white")
         return Align.left(
             Panel(
                 content,
@@ -864,7 +918,7 @@ def _render_composer(draft: str, status_line: str, user_typing: bool):
         prompt = f" {draft}{cursor}"
     else:
         prompt = " [dim italic]메시지를 입력하세요...[/dim italic]"
-    keys = "[dim]Enter[/dim] send  [dim]Esc[/dim] clear  [dim]/help[/dim] cmds  [dim]/quit[/dim] exit"
+    keys = "[dim]Enter[/dim] send  [dim]Esc[/dim] clear  [dim][ ][/dim] scroll  [dim]/help[/dim] cmds"
     status = f"[dim italic]{status_line}[/dim italic]"
     title = "[bright_blue]typing...[/bright_blue]" if user_typing else "[dim]message[/dim]"
     return Panel(
@@ -926,6 +980,7 @@ def _build_render_key(
     status_line: str,
     assistant_typing: bool,
     user_typing: bool,
+    scroll_offset: int = 0,
 ) -> tuple[Any, ...]:
     latest = session.messages[-1] if session.messages else None
     latest_marker = (
@@ -953,6 +1008,7 @@ def _build_render_key(
         session.affection_score,
         session.mood.current,
         session.mood.intensity,
+        scroll_offset,
     )
 
 

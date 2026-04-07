@@ -858,7 +858,7 @@ def _render_message(
 
 def _render_composer(draft: str, status_line: str, user_typing: bool):
     if draft:
-        cursor = "[blink bright_white]|[/blink bright_white]"
+        cursor = "[blink]|[/blink]"
         prompt = f" {draft}{cursor}"
     else:
         prompt = " [dim italic]메시지를 입력하세요...[/dim italic]"

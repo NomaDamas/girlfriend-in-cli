@@ -216,7 +216,8 @@ def main() -> int:
         if args.persona:
             persona_path = resolve_persona_path(args.persona)
         elif len(bundled_personas) > 1 and sys.stdin.isatty():
-            persona_path = _pick_persona_interactive(bundled_personas)
+            picked = _pick_persona_interactive(bundled_personas)
+            persona_path = picked if picked is not None else bundled_personas[0]
         elif bundled_personas:
             persona_path = bundled_personas[0]
         else:
@@ -286,15 +287,15 @@ def _show_main_menu(
     bundled_personas: list[Path],
     args: argparse.Namespace,
 ) -> tuple[argparse.Namespace, Path, Path | None] | None:
-    from rich.columns import Columns
     from rich.console import Console
     from rich.panel import Panel
     from rich.text import Text
+    from .selector import MenuItem, arrow_select
 
     console = Console()
     console.clear()
 
-    # ASCII art logo with gradient
+    # ASCII art logo
     logo_text = Text(_LOGO)
     logo_text.stylize("bold magenta")
     console.print(Panel(
@@ -319,57 +320,30 @@ def _show_main_menu(
     console.print(settings_bar)
     console.print()
 
-    # Menu cards
-    cards = [
-        Panel(
-            "[bold white]New Chat[/bold white]\n[dim]Start a fresh conversation\nwith a persona[/dim]",
-            border_style="bright_magenta",
-            title="[bold bright_magenta]1[/bold bright_magenta]",
-            width=28,
-            padding=(1, 2),
-        ),
-        Panel(
-            "[bold white]Create[/bold white]\n[dim]Build your own custom\npersona from scratch[/dim]",
-            border_style="bright_green",
-            title="[bold bright_green]2[/bold bright_green]",
-            width=28,
-            padding=(1, 2),
-        ),
-        Panel(
-            "[bold white]Resume[/bold white]\n[dim]Continue a previous\nchat session[/dim]",
-            border_style="bright_cyan",
-            title="[bold bright_cyan]3[/bold bright_cyan]",
-            width=28,
-            padding=(1, 2),
-        ),
-        Panel(
-            "[bold white]Settings[/bold white]\n[dim]Provider, performance\nvoice, music[/dim]",
-            border_style="bright_yellow",
-            title="[bold bright_yellow]4[/bold bright_yellow]",
-            width=28,
-            padding=(1, 2),
-        ),
+    menu_items = [
+        MenuItem("New Chat", "Start a fresh conversation", icon="💬"),
+        MenuItem("Create Persona", "Build your own custom character", icon="✨"),
+        MenuItem("Resume", "Continue a previous session", icon="💾"),
+        MenuItem("Settings", "Provider, performance, API keys", icon="⚙️"),
+        MenuItem("Quit", "", icon="👋"),
     ]
-    console.print(Columns(cards, padding=(0, 1)))
-    console.print()
 
     while True:
-        try:
-            choice = input("  \033[1;35m>\033[0m Select [\033[1;35m1\033[0m/\033[1;32m2\033[0m/\033[1;36m3\033[0m/\033[1;33m4\033[0m/\033[2mq\033[0m]: ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
+        choice = arrow_select(console, menu_items, title="Main Menu", allow_back=False)
+
+        if choice is None or choice == 4:  # Quit
             console.print("\n  [dim]Goodbye.[/dim]")
             return None
 
-        if choice == "q":
-            console.print("\n  [dim]Goodbye.[/dim]")
-            return None
-
-        if choice == "1":
+        if choice == 0:  # New Chat
             console.print()
-            persona_path = _pick_persona_interactive(bundled_personas, console)
-            return args, resolve_persona_path(persona_path), None
+            result = _pick_persona_interactive(bundled_personas, console)
+            if result is None:
+                console.clear()
+                return _show_main_menu(bundled_personas, args)
+            return args, resolve_persona_path(result), None
 
-        if choice == "2":
+        if choice == 1:  # Create Persona
             console.print()
             created = _create_persona_wizard(console)
             if created is not None:
@@ -377,21 +351,20 @@ def _show_main_menu(
             console.clear()
             return _show_main_menu(bundled_personas, args)
 
-        if choice == "3":
+        if choice == 2:  # Resume
             console.print()
             resume_result = _pick_session_to_resume(console, bundled_personas)
             if resume_result is None:
-                continue
+                console.clear()
+                return _show_main_menu(bundled_personas, args)
             persona_path, resume_path = resume_result
             return args, resolve_persona_path(persona_path), resume_path
 
-        if choice == "4":
+        if choice == 3:  # Settings
             console.print()
             _settings_menu(console, args)
             console.clear()
             return _show_main_menu(bundled_personas, args)
-
-        console.print("  [red]1, 2, 3, 4, or q[/red]")
 
 
 def _create_persona_wizard(console: "Console") -> Path | None:  # type: ignore[name-defined]
@@ -542,8 +515,7 @@ def _pick_session_to_resume(
     console: "Console",  # type: ignore[name-defined]
     bundled_personas: list[Path],
 ) -> tuple[Path, Path] | None:
-    from rich.panel import Panel
-    from rich.text import Text
+    from .selector import MenuItem, arrow_select
 
     session_dir = bundled_session_dir()
     if not session_dir.exists():
@@ -556,6 +528,7 @@ def _pick_session_to_resume(
         return None
 
     session_summaries = []
+    menu_items = []
     for sf in session_files[:8]:
         try:
             data = json.loads(sf.read_text(encoding="utf-8"))
@@ -565,68 +538,31 @@ def _pick_session_to_resume(
             session_summaries.append({
                 "path": sf,
                 "persona_name": persona_name,
-                "msg_count": msg_count,
-                "mode": mode,
             })
+            icon = _MODE_ICONS.get(mode, "💬")
+            menu_items.append(MenuItem(
+                persona_name,
+                f"{msg_count} messages  |  {sf.stem}",
+                icon=icon,
+            ))
         except Exception:
-            session_summaries.append({
-                "path": sf,
-                "persona_name": "?",
-                "msg_count": 0,
-                "mode": "?",
-            })
+            session_summaries.append({"path": sf, "persona_name": "?"})
+            menu_items.append(MenuItem(sf.stem, "corrupted", icon="❓"))
 
-    items = []
-    for i, s in enumerate(session_summaries, 1):
-        icon = _MODE_ICONS.get(s["mode"], "💬")
-        body = Text.assemble(
-            (f" {icon} ", ""),
-            (s["persona_name"], "bold white"),
-            (f"  {s['msg_count']} msgs", "dim"),
-            ("\n   ", ""),
-            (s["path"].stem, "dim italic"),
-        )
-        items.append(Panel(
-            body,
-            border_style="bright_green",
-            title=f"[bold bright_green]{i}[/bold bright_green]",
-            width=50,
-        ))
+    choice = arrow_select(console, menu_items, title="Resume Session")
+    if choice is None:
+        return None
 
-    console.print(Panel(
-        "\n".join("" for _ in range(0)),  # spacer
-        title="[bold bright_green]  Saved Sessions  [/bold bright_green]",
-        border_style="bright_green",
-        width=54,
-        padding=(0, 0),
-    ))
-    for item in items:
-        console.print(item)
-    console.print()
-
-    while True:
-        try:
-            raw = input(f"  \033[1;32m>\033[0m Select [1-{len(session_summaries)}] or \033[2mb\033[0m: ").strip()
-        except (EOFError, KeyboardInterrupt):
-            return None
-        if raw.lower() == "b":
-            return None
-        try:
-            idx = int(raw) - 1
-            if 0 <= idx < len(session_summaries):
-                selected = session_summaries[idx]
-                persona_name = selected["persona_name"]
-                persona_path = _find_persona_by_name(persona_name, bundled_personas)
-                if persona_path is None and bundled_personas:
-                    persona_path = bundled_personas[0]
-                elif persona_path is None:
-                    console.print("  [red]No matching persona found.[/red]")
-                    return None
-                console.print(f"\n  [bold green]Resuming chat with {persona_name}...[/bold green]\n")
-                return persona_path, selected["path"]
-        except ValueError:
-            pass
-        console.print(f"  [red]1-{len(session_summaries)} or b[/red]")
+    selected = session_summaries[choice]
+    persona_name = selected["persona_name"]
+    persona_path = _find_persona_by_name(persona_name, bundled_personas)
+    if persona_path is None and bundled_personas:
+        persona_path = bundled_personas[0]
+    elif persona_path is None:
+        console.print("  [red]No matching persona found.[/red]")
+        return None
+    console.print(f"\n  [bold green]Resuming chat with {persona_name}...[/bold green]\n")
+    return persona_path, selected["path"]
 
 
 def _find_persona_by_name(name: str, personas: list[Path]) -> Path | None:
@@ -641,136 +577,115 @@ def _find_persona_by_name(name: str, personas: list[Path]) -> Path | None:
 
 
 def _settings_menu(console: "Console", args: argparse.Namespace) -> None:  # type: ignore[name-defined]
-    from rich.panel import Panel
-    from rich.text import Text
+    import os
+    from .selector import MenuItem, arrow_select
 
     providers = ["heuristic", "openai", "anthropic"]
     perfs = ["turbo", "balanced", "cinematic"]
 
-    def _render() -> None:
-        perf_icon = _PERF_ICONS.get(args.performance, "")
-        body = Text.assemble(
-            ("\n", ""),
-            ("  [1] Provider       ", "bold yellow"),
-            (args.provider, "bold cyan"),
-            ("\n", ""),
-            ("  [2] Performance    ", "bold yellow"),
-            (f"{perf_icon} {args.performance}", "bold white"),
-            ("\n", ""),
-            ("  [3] Voice Output   ", "bold yellow"),
-            ("ON " if args.voice_output else "OFF", "bold green" if args.voice_output else "dim red"),
-            ("\n", ""),
-            ("  [4] Trace Panel    ", "bold yellow"),
-            ("ON " if not args.no_trace else "OFF", "bold green" if not args.no_trace else "dim red"),
-            ("\n", ""),
-        )
-        console.print(Panel(
-            body,
-            title="[bold bright_yellow]  Settings  [/bold bright_yellow]",
-            border_style="bright_yellow",
-            width=50,
-        ))
-
-    _render()
-
     while True:
-        try:
-            raw = input("  \033[1;33m>\033[0m Select [1/2/3/4] or \033[2mb\033[0m: ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
+        perf_icon = _PERF_ICONS.get(args.performance, "")
+        has_openai = bool(os.environ.get("OPENAI_API_KEY"))
+        has_anthropic = bool(os.environ.get("ANTHROPIC_API_KEY"))
+
+        items = [
+            MenuItem(f"Provider: {args.provider}", "Cycle between heuristic / openai / anthropic", icon="🔌"),
+            MenuItem(f"Performance: {perf_icon} {args.performance}", "Cycle turbo / balanced / cinematic", icon="⚡"),
+            MenuItem(f"Voice: {'ON' if args.voice_output else 'OFF'}", "Toggle voice output", icon="🔊"),
+            MenuItem(f"Trace: {'ON' if not args.no_trace else 'OFF'}", "Toggle debug trace panel", icon="📊"),
+            MenuItem(
+                "API Keys",
+                f"OpenAI: {'set' if has_openai else 'missing'}  |  Anthropic: {'set' if has_anthropic else 'missing'}",
+                icon="🔑",
+            ),
+        ]
+
+        choice = arrow_select(console, items, title="Settings")
+        if choice is None:
             return
 
-        if raw == "b":
-            return
-        if raw == "1":
+        if choice == 0:  # Provider
             current_idx = providers.index(args.provider) if args.provider in providers else 0
             args.provider = providers[(current_idx + 1) % len(providers)]
-            console.print(f"  [green]Provider -> {args.provider}[/green]")
-            return
-        if raw == "2":
+            console.print(f"  [green]Provider -> {args.provider}[/green]\n")
+        elif choice == 1:  # Performance
             current_idx = perfs.index(args.performance) if args.performance in perfs else 0
             args.performance = perfs[(current_idx + 1) % len(perfs)]
-            console.print(f"  [green]Performance -> {args.performance}[/green]")
-            return
-        if raw == "3":
+            console.print(f"  [green]Performance -> {args.performance}[/green]\n")
+        elif choice == 2:  # Voice
             args.voice_output = not args.voice_output
-            console.print(f"  [green]Voice -> {'ON' if args.voice_output else 'OFF'}[/green]")
-            return
-        if raw == "4":
+            console.print(f"  [green]Voice -> {'ON' if args.voice_output else 'OFF'}[/green]\n")
+        elif choice == 3:  # Trace
             args.no_trace = not args.no_trace
-            console.print(f"  [green]Trace -> {'ON' if not args.no_trace else 'OFF'}[/green]")
-            return
-        console.print("  [red]1, 2, 3, 4, or b[/red]")
+            console.print(f"  [green]Trace -> {'ON' if not args.no_trace else 'OFF'}[/green]\n")
+        elif choice == 4:  # API Keys
+            _api_key_guide(console)
 
 
-def _pick_persona_interactive(personas: list[Path], console: "Console | None" = None) -> Path:  # type: ignore[name-defined]
-    from rich.columns import Columns
+def _api_key_guide(console: "Console") -> None:  # type: ignore[name-defined]
+    import os
+
+    console.print()
+    console.print("  [bold]API Key Setup[/bold]")
+    console.print("  [dim]─────────────────────────────────────────[/dim]")
+    console.print()
+
+    has_openai = bool(os.environ.get("OPENAI_API_KEY"))
+    has_anthropic = bool(os.environ.get("ANTHROPIC_API_KEY"))
+
+    console.print(f"  OpenAI     {'[green]set[/green]' if has_openai else '[red]not set[/red]'}")
+    console.print(f"  Anthropic  {'[green]set[/green]' if has_anthropic else '[red]not set[/red]'}")
+    console.print()
+    console.print("  [dim]To set API keys, add to your shell profile (~/.zshrc):[/dim]")
+    console.print()
+    console.print('  [cyan]export OPENAI_API_KEY="sk-..."[/cyan]')
+    console.print('  [cyan]export ANTHROPIC_API_KEY="sk-ant-..."[/cyan]')
+    console.print()
+    console.print("  [dim]Then restart your terminal or run: source ~/.zshrc[/dim]")
+    console.print()
+    console.print("  [dim]Get your keys at:[/dim]")
+    console.print("  [dim]OpenAI:    platform.openai.com/api-keys[/dim]")
+    console.print("  [dim]Anthropic: console.anthropic.com/settings/keys[/dim]")
+    console.print()
+
+    try:
+        input("  [dim]Press Enter to go back...[/dim]")
+    except (EOFError, KeyboardInterrupt):
+        pass
+
+
+def _pick_persona_interactive(personas: list[Path], console: "Console | None" = None) -> Path | None:  # type: ignore[name-defined]
     from rich.console import Console as RichConsole
-    from rich.panel import Panel
-    from rich.text import Text
+    from .selector import MenuItem, arrow_select
 
     if console is None:
         console = RichConsole()
 
-    cards = []
-    summaries = []
-    for i, path in enumerate(personas, 1):
+    menu_items = []
+    for path in personas:
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             name = data.get("name", path.stem)
             age = data.get("age", "?")
             mode = data.get("relationship_mode", "?")
-            bg = (data.get("background") or "")[:50]
-            interests = data.get("interests", [])[:3]
-            soft_spots = data.get("soft_spots", [])[:2]
-            greeting = (data.get("greeting") or "")[:40]
-            accent = data.get("accent_color", "magenta")
-            summaries.append({"name": name, "accent": accent})
+            interests = ", ".join(data.get("interests", [])[:3])
+            icon = _MODE_ICONS.get(mode, "💬")
+            menu_items.append(MenuItem(
+                f"{name}  {age}세  {mode}",
+                interests if interests else "-",
+                icon=icon,
+            ))
         except Exception:
-            name, age, mode, bg = path.stem, "?", "?", ""
-            interests, soft_spots, greeting, accent = [], [], "", "magenta"
-            summaries.append({"name": name, "accent": accent})
+            menu_items.append(MenuItem(path.stem, "", icon="💬"))
 
-        icon = _MODE_ICONS.get(mode, "💬")
-        interest_str = ", ".join(interests) if interests else "-"
-        spot_str = ", ".join(soft_spots) if soft_spots else "-"
+    choice = arrow_select(console, menu_items, title="Who do you want to talk to?")
+    if choice is None:
+        return None
 
-        body = Text.assemble(
-            (f"  {icon} ", ""),
-            (name, f"bold {accent}"),
-            (f"  {age}세", "dim"),
-            (f"  {mode}", f"italic {accent}"),
-            ("\n\n", ""),
-            ("  ", ""),
-            (bg, "dim"),
-            ("\n\n", ""),
-            ("  Interests  ", "bold dim"),
-            (interest_str, "white"),
-            ("\n", ""),
-            ("  Soft spots ", "bold dim"),
-            (spot_str, "white"),
-            ("\n\n", ""),
-            (f'  "{greeting}"', f"italic {accent}"),
-            ("\n", ""),
-        )
-        cards.append(Panel(
-            body,
-            border_style=accent,
-            title=f"[bold]{i}[/bold]",
-            width=42,
-            padding=(1, 0),
-        ))
-
-    console.print(Columns(cards, padding=(0, 1), equal=True))
-    console.print()
-
-    while True:
-        try:
-            raw = input(f"  \033[1;35m>\033[0m Who do you want to talk to? [1-{len(personas)}]: ").strip()
-            idx = int(raw) - 1
-            if 0 <= idx < len(personas):
-                s = summaries[idx]
-                console.print(f"\n  [bold {s['accent']}]Starting chat with {s['name']}...[/bold {s['accent']}]\n")
-                return personas[idx]
-        except (ValueError, EOFError):
-            pass
-        console.print(f"  [red]1-{len(personas)}[/red]")
+    try:
+        data = json.loads(personas[choice].read_text(encoding="utf-8"))
+        name = data.get("name", "")
+    except Exception:
+        name = ""
+    console.print(f"\n  [bold magenta]Starting chat with {name}...[/bold magenta]\n")
+    return personas[choice]

@@ -110,6 +110,20 @@ class RawKeyboard:
                     break
                 data += os.read(self.fd, 1)
             return data.decode(errors="ignore")
+        # Handle multi-byte UTF-8 (Korean, emoji, etc.)
+        first = data[0]
+        if first >= 0xC0:
+            if first >= 0xF0:
+                remaining = 3
+            elif first >= 0xE0:
+                remaining = 2  # Korean characters (3 bytes total)
+            else:
+                remaining = 1
+            for _ in range(remaining):
+                extra = os.read(self.fd, 1)
+                if not extra:
+                    break
+                data += extra
         return data.decode(errors="ignore")
 
 

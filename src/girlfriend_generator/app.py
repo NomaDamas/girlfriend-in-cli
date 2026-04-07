@@ -514,7 +514,7 @@ def _handle_command(
         }
     if lowered == "/help":
         session.add_system_message(
-            "Commands: /help, /quit, /trace, /status, /export, /reload, /voice on, /voice off, /listen"
+            "Commands: /help, /quit, /trace, /status, /affection, /export, /reload, /voice on, /voice off, /listen"
         )
         return {
             "draft": "",
@@ -543,6 +543,35 @@ def _handle_command(
         return {
             "draft": "",
             "status_line": "Session status posted.",
+            "pending_job": pending_job,
+            "show_trace": show_trace,
+            "voice_output_enabled": voice_output_enabled,
+            "quit": False,
+        }
+    if lowered == "/affection":
+        report = session.affection_report()
+        hearts = "❤️" * report["level"] + "🤍" * (5 - report["level"])
+        bar_filled = report["score"] // 5
+        bar_empty = 20 - bar_filled
+        bar = "█" * bar_filled + "░" * bar_empty
+
+        lines = [
+            f"{'─' * 36}",
+            f"  {hearts}  {report['label']}",
+            f"  [{bar}] {report['score']}/100",
+            f"{'─' * 36}",
+            f"  Messages:  you {report['total_user']}  /  {session.persona.name} {report['total_assistant']}",
+            f"  Avg length: {report['avg_msg_length']} chars",
+            f"  Positive:  {report['positive_messages']}  |  Negative: {report['negative_messages']}",
+            f"  Mood: {report['mood']} (intensity {report['mood_intensity']:.1f})",
+            f"{'─' * 36}",
+            f"  Tip: {report['tip']}",
+            f"{'─' * 36}",
+        ]
+        session.add_system_message("\n".join(lines))
+        return {
+            "draft": "",
+            "status_line": "Affection report posted.",
             "pending_job": pending_job,
             "show_trace": show_trace,
             "voice_output_enabled": voice_output_enabled,

@@ -163,6 +163,56 @@ class ConversationSession:
             return "excited"
         return "neutral"
 
+    def affection_report(self) -> dict[str, object]:
+        score = self.affection_score
+        if score >= 80:
+            level, label = 5, "완전 반했어"
+            tip = "이 흐름 유지하면 돼. 진심 어린 말 한마디면 충분해."
+        elif score >= 65:
+            level, label = 4, "꽤 좋은 사이"
+            tip = "관심사 얘기나 데이트 제안을 슬쩍 꺼내봐."
+        elif score >= 50:
+            level, label = 3, "나쁘지 않아"
+            tip = "좀 더 적극적으로 반응해봐. 리액션이 핵심이야."
+        elif score >= 30:
+            level, label = 2, "아직 어색해"
+            tip = "단답은 피하고, 질문을 던져서 대화를 이어가봐."
+        else:
+            level, label = 1, "관심 밖"
+            tip = "진심 어린 안부부터 다시 시작해봐."
+
+        total_user = sum(1 for m in self.messages if m.role == "user")
+        total_assistant = sum(1 for m in self.messages if m.role == "assistant")
+        avg_len = 0.0
+        user_msgs = [m for m in self.messages if m.role == "user"]
+        if user_msgs:
+            avg_len = sum(len(m.text) for m in user_msgs) / len(user_msgs)
+
+        positive_tokens = ("고마워", "좋아", "보고싶", "재밌", "설레", "사랑", "예쁘", "최고", "행복", "귀여")
+        negative_tokens = ("짜증", "싫어", "별로", "귀찮", "몰라", "됐어")
+        pos_count = sum(
+            1 for m in user_msgs
+            if any(t in m.text for t in positive_tokens)
+        )
+        neg_count = sum(
+            1 for m in user_msgs
+            if any(t in m.text for t in negative_tokens)
+        )
+
+        return {
+            "score": score,
+            "level": level,
+            "label": label,
+            "tip": tip,
+            "total_user": total_user,
+            "total_assistant": total_assistant,
+            "avg_msg_length": round(avg_len, 1),
+            "positive_messages": pos_count,
+            "negative_messages": neg_count,
+            "mood": self.mood.current,
+            "mood_intensity": self.mood.intensity,
+        }
+
     def tick(self, provider: object, now: datetime | None = None) -> TickResult:
         now = now or utc_now()
         if self.nudge_due(now):

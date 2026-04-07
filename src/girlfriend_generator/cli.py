@@ -596,7 +596,7 @@ def _pick_persona_interactive(personas: list[Path], console: "Console | None" = 
         )
         cards.append(Panel(
             body,
-            border_style=f"bright_{accent}" if "bright" not in accent else accent,
+            border_style=accent,
             title=f"[bold]{i}[/bold]",
             width=42,
             padding=(1, 0),

@@ -100,25 +100,25 @@ class RawKeyboard:
         ready, _, _ = select.select([sys.stdin], [], [], timeout)
         if not ready:
             return None
-        # Read up to 16 bytes at once to capture full multi-byte characters
-        # and IME-composed Korean input in a single read
-        data = os.read(self.fd, 16)
+        # Read initial bytes
+        data = os.read(self.fd, 64)
         if not data:
             return None
         if data[0:1] == b"\x1b":
-            # Drain any remaining escape sequence bytes
+            # Drain escape sequence
             while True:
                 ready, _, _ = select.select([sys.stdin], [], [], 0)
                 if not ready:
                     break
                 data += os.read(self.fd, 1)
             return data.decode(errors="ignore")
-        # Drain any additional pending bytes (IME burst)
+        # Wait briefly for IME composition to finish, then drain
+        time.sleep(0.02)
         while True:
             ready, _, _ = select.select([sys.stdin], [], [], 0)
             if not ready:
                 break
-            extra = os.read(self.fd, 16)
+            extra = os.read(self.fd, 64)
             if not extra:
                 break
             data += extra

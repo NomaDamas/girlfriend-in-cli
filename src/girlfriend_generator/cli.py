@@ -258,17 +258,44 @@ def _launch_chat(
     return run_chat_app(config)
 
 
-_LOGO = r"""
-   ___  _      _  __     _          _
-  / __\(_)_ __| |/ _|_ __(_) ___ _ __  __| |
- / _  | | '__| | |_| '__| |/ _ \ '_ \/ _` |
-/ /_\_| | |  | |  _| |  | |  __/ | | \__,_|
-\____/|_|_|  |_|_| |_|  |_|\___|_| |_|___/
- ___                          _
-/ _ \___ _ __   ___ _ __ __ _| |_ ___  _ __
-/ /_\/ _ \ '_ \ / _ \ '__/ _` | __/ _ \| '__|
-/ /_\\  __/ | | |  __/ | | (_| | || (_) | |
-\____/\___|_| |_|\___|_|  \__,_|\__\___/|_|
+_NERD_FRAMES = [
+    r"""
+     ┌─────────────────────────────────────────────────────┐
+     │  (•_•)  "I just want someone to text me first..."   │
+     │   <|>                                               │
+     │   / \    ♡ GIRLFRIEND GENERATOR ♡                   │
+     └─────────────────────────────────────────────────────┘
+    """,
+    r"""
+     ┌─────────────────────────────────────────────────────┐
+     │  (•‿•)  "Maybe today is the day..."                 │
+     │   \|/                                               │
+     │   / \    ♡ GIRLFRIEND GENERATOR ♡                   │
+     └─────────────────────────────────────────────────────┘
+    """,
+    r"""
+     ┌─────────────────────────────────────────────────────┐
+     │  (✧ᴗ✧)  "Compiling feelings... 100%!"              │
+     │   <|>   ♡                                           │
+     │   / \    ♡ GIRLFRIEND GENERATOR ♡                   │
+     └─────────────────────────────────────────────────────┘
+    """,
+]
+
+_WELCOME_ART = r"""
+  ██████╗ ██╗██████╗ ██╗     ███████╗██████╗ ██╗███████╗███╗   ██╗██████╗
+ ██╔════╝ ██║██╔══██╗██║     ██╔════╝██╔══██╗██║██╔════╝████╗  ██║██╔══██╗
+ ██║  ███╗██║██████╔╝██║     █████╗  ██████╔╝██║█████╗  ██╔██╗ ██║██║  ██║
+ ██║   ██║██║██╔══██╗██║     ██╔══╝  ██╔══██╗██║██╔══╝  ██║╚██╗██║██║  ██║
+ ╚██████╔╝██║██║  ██║███████╗██║     ██║  ██║██║███████╗██║ ╚████║██████╔╝
+  ╚═════╝ ╚═╝╚═╝  ╚═╝╚══════╝╚═╝     ╚═╝  ╚═╝╚═╝╚══════╝╚═╝  ╚═══╝╚═════╝
+
+  ██████╗ ███████╗███╗   ██╗███████╗██████╗  █████╗ ████████╗ ██████╗ ██████╗
+ ██╔════╝ ██╔════╝████╗  ██║██╔════╝██╔══██╗██╔══██╗╚══██╔══╝██╔═══██╗██╔══██╗
+ ██║  ███╗█████╗  ██╔██╗ ██║█████╗  ██████╔╝███████║   ██║   ██║   ██║██████╔╝
+ ██║   ██║██╔══╝  ██║╚██╗██║██╔══╝  ██╔══██╗██╔══██║   ██║   ██║   ██║██╔══██╗
+ ╚██████╔╝███████╗██║ ╚████║███████╗██║  ██║██║  ██║   ██║   ╚██████╔╝██║  ██║
+  ╚═════╝ ╚══════╝╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝    ╚═════╝ ╚═╝  ╚═╝
 """
 
 _MODE_ICONS = {
@@ -283,9 +310,30 @@ _PERF_ICONS = {
 }
 
 
+def _play_intro(console: "Console") -> None:  # type: ignore[name-defined]
+    """Play the nerd animation intro."""
+    import time
+    from rich.text import Text
+
+    for frame in _NERD_FRAMES:
+        console.clear()
+        text = Text(frame)
+        text.stylize("bright_magenta")
+        console.print(text)
+        time.sleep(0.7)
+
+    # Final logo
+    console.clear()
+    logo = Text(_WELCOME_ART)
+    logo.stylize("bold bright_magenta")
+    console.print(logo)
+    time.sleep(0.5)
+
+
 def _show_main_menu(
     bundled_personas: list[Path],
     args: argparse.Namespace,
+    skip_intro: bool = False,
 ) -> tuple[argparse.Namespace, Path, Path | None] | None:
     from rich.console import Console
     from rich.panel import Panel
@@ -295,41 +343,49 @@ def _show_main_menu(
     console = Console()
     console.clear()
 
-    # ASCII art logo
-    logo_text = Text(_LOGO)
-    logo_text.stylize("bold magenta")
+    # Play intro animation on first launch
+    if not skip_intro:
+        _play_intro(console)
+        console.clear()
+
+    # Big logo
+    logo = Text(_WELCOME_ART)
+    logo.stylize("bold bright_magenta")
     console.print(Panel(
-        logo_text,
+        logo,
         border_style="bright_magenta",
-        padding=(0, 2),
-        subtitle="[dim italic]terminal romance simulator  |  v0.1.0[/dim italic]",
+        padding=(0, 1),
     ))
 
-    # Current settings bar
+    # Nerd character + settings
     perf_icon = _PERF_ICONS.get(args.performance, "")
-    settings_bar = Text.assemble(
+    status = Text.assemble(
+        ("  (✧ᴗ✧) ", "bold bright_magenta"),
         ("  Provider: ", "dim"),
         (args.provider, "bold cyan"),
-        ("  |  Performance: ", "dim"),
+        ("  │  ", "dim"),
         (f"{perf_icon} {args.performance}", "bold yellow"),
-        ("  |  Voice: ", "dim"),
+        ("  │  Voice: ", "dim"),
         ("ON" if args.voice_output else "OFF", "bold green" if args.voice_output else "dim"),
-        ("  |  Trace: ", "dim"),
-        ("ON" if not args.no_trace else "OFF", "bold green" if not args.no_trace else "dim"),
     )
-    console.print(settings_bar)
+    console.print(status)
     console.print()
 
     menu_items = [
-        MenuItem("New Chat", "Start a fresh conversation", icon="💬"),
-        MenuItem("Create Persona", "Build your own custom character", icon="✨"),
-        MenuItem("Resume", "Continue a previous session", icon="💾"),
+        MenuItem("New Chat", "Pick a persona and start chatting", icon="💬"),
+        MenuItem("Create Persona", "Design your own character from scratch", icon="✨"),
+        MenuItem("Resume Session", "Continue where you left off", icon="💾"),
         MenuItem("Settings", "Provider, performance, API keys", icon="⚙️"),
-        MenuItem("Quit", "", icon="👋"),
+        MenuItem("Quit", "See you next time", icon="👋"),
     ]
 
     while True:
-        choice = arrow_select(console, menu_items, title="Main Menu", allow_back=False)
+        choice = arrow_select(
+            console, menu_items,
+            title="♡ What would you like to do?",
+            allow_back=False,
+            border_style="bright_magenta",
+        )
 
         if choice is None or choice == 4:  # Quit
             console.print("\n  [dim]Goodbye.[/dim]")
@@ -340,7 +396,7 @@ def _show_main_menu(
             result = _pick_persona_interactive(bundled_personas, console)
             if result is None:
                 console.clear()
-                return _show_main_menu(bundled_personas, args)
+                return _show_main_menu(bundled_personas, args, skip_intro=True)
             return args, resolve_persona_path(result), None
 
         if choice == 1:  # Create Persona
@@ -349,14 +405,14 @@ def _show_main_menu(
             if created is not None:
                 return args, created, None
             console.clear()
-            return _show_main_menu(bundled_personas, args)
+            return _show_main_menu(bundled_personas, args, skip_intro=True)
 
         if choice == 2:  # Resume
             console.print()
             resume_result = _pick_session_to_resume(console, bundled_personas)
             if resume_result is None:
                 console.clear()
-                return _show_main_menu(bundled_personas, args)
+                return _show_main_menu(bundled_personas, args, skip_intro=True)
             persona_path, resume_path = resume_result
             return args, resolve_persona_path(persona_path), resume_path
 
@@ -364,7 +420,7 @@ def _show_main_menu(
             console.print()
             _settings_menu(console, args)
             console.clear()
-            return _show_main_menu(bundled_personas, args)
+            return _show_main_menu(bundled_personas, args, skip_intro=True)
 
 
 def _create_persona_wizard(console: "Console") -> Path | None:  # type: ignore[name-defined]

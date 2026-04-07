@@ -35,13 +35,20 @@ class HeuristicProvider:
         mood: MoodType = "neutral",
     ) -> ProviderReply:
         lower = user_text.lower()
-        opener = self._pick_opener(persona.relationship_mode, lower)
-        emotion = self._pick_emotion(lower)
-        hook = self._pick_hook(persona, affection_score)
-        question = self._pick_question(persona, lower)
-        style = self._pick_style_hook(persona)
-        mood_flavor = self._mood_flavor(mood, persona.relationship_mode)
-        text = f"{opener} {emotion} {hook} {style} {mood_flavor} {question}".strip()
+        # Pick 1-2 parts for a natural, short reply
+        parts: list[str] = []
+        reaction = self._pick_reaction(persona, lower, affection_score)
+        parts.append(reaction)
+        # Sometimes add a follow-up (50% chance)
+        if self.rng.random() < 0.5:
+            follow = self._pick_follow_up(persona, lower, mood)
+            if follow:
+                parts.append(follow)
+        # Maybe add a signature phrase
+        sig = self._pick_signature(persona)
+        if sig:
+            parts.append(sig)
+        text = " ".join(parts).strip()
         typing_seconds = self._typing_seconds(persona, text)
         return ProviderReply(
             text=text,
@@ -55,20 +62,9 @@ class HeuristicProvider:
         history: list[ChatMessage],
         affection_score: int,
     ) -> str:
-        opener = self.rng.choice(
+        return self.rng.choice(
             persona.initiative_profile.opener_templates or [persona.greeting]
         )
-        follow_up = self.rng.choice(
-            persona.initiative_profile.follow_up_templates or ["오늘 텐션 어떤지 궁금했어."]
-        )
-        context = ""
-        if persona.context_summary:
-            context = f" {persona.context_summary.split('.')[0]}."
-        if affection_score >= 65:
-            closer = " 지금은 내가 먼저 말 걸어도 되는 타이밍 같아서 왔어."
-        else:
-            closer = " 그냥 갑자기 네 톤이 떠올라서 먼저 와봤어."
-        return f"{opener} {follow_up}{context}{closer}".strip()
 
     def _typing_seconds(self, persona: Persona, text: str) -> float:
         if self.performance_mode == "turbo":
@@ -83,104 +79,128 @@ class HeuristicProvider:
             max(persona.typing.min_seconds, len(text) / 18.0),
         )
 
-    def _pick_opener(self, relationship_mode: str, user_text: str) -> str:
-        if relationship_mode == "girlfriend":
-            options = [
-                "아 뭐야, 갑자기 그렇게 말하면 좀 귀엽잖아.",
-                "음, 그 말투 오늘 좀 심쿵인데.",
-                "너 지금 분위기 잘 타고 있네.",
-            ]
-        else:
-            options = [
-                "오, 그렇게 들어오면 나 좀 신경 쓰이는데.",
-                "지금 톤 괜찮다. 센스 있는데?",
-                "그 말은 꽤 좋다. 계속 해봐.",
-            ]
+    def _pick_reaction(self, persona: Persona, user_text: str, affection: int) -> str:
+        """Pick a natural reaction to the user's message."""
+        # Context-specific reactions
         if "밥" in user_text or "먹" in user_text:
-            return "밥 얘기 나오니까 갑자기 데이트 플랜 짜고 싶어지네."
-        if "보고" in user_text:
-            return "그 말 진짜 반칙이다."
-        return self.rng.choice(options)
-
-    def _pick_emotion(self, user_text: str) -> str:
+            return self.rng.choice([
+                "오 뭐 먹을 건데?",
+                "갑자기 배고파지네 ㅋㅋ",
+                "맛있는 거 먹자~ 뭐가 좋아?",
+                "아 나도 배고팠어!",
+            ])
+        if "보고싶" in user_text or "보고 싶" in user_text:
+            if persona.relationship_mode == "girlfriend":
+                return self.rng.choice([
+                    "나도 보고싶었어 ㅠㅠ",
+                    "헐 나도... 언제 볼 수 있어?",
+                    "그 말 하니까 진짜 보고싶다.",
+                    "야 그런 말 하면 나 어떡해.",
+                ])
+            return self.rng.choice([
+                "ㅋㅋ 갑자기?",
+                "뭐야 무슨 일이야 ㅋㅋ",
+                "...그런 말 갑자기 하면 좀 그렇잖아.",
+            ])
         if "힘들" in user_text or "피곤" in user_text:
-            return "오늘 힘들었으면 내가 잠깐 텐션 올려줄게."
+            return self.rng.choice([
+                "에이 무슨 일이야? 괜찮아?",
+                "힘들었구나... 오늘 푹 쉬어.",
+                "무리하지 마 ㅠ 내가 옆에 있어줄게.",
+                "아이고... 수고했어 오늘도.",
+            ])
         if "좋아" in user_text or "설레" in user_text:
-            return "이렇게 직진으로 오면 나도 장난 못 치겠다."
-        return self.rng.choice(
-            [
-                "리듬감 좋게 오니까 대화가 쫀쫀해진다.",
-                "이런 식으로 톡하면 확실히 존재감이 생겨.",
-                "짧게 던져도 결이 살아 있어서 계속 보게 돼.",
-            ]
-        )
-
-    def _pick_hook(self, persona: Persona, affection_score: int) -> str:
-        interest = self.rng.choice(persona.interests)
-        soft_spot = self.rng.choice(persona.soft_spots)
-        if affection_score >= 65:
-            return f"특히 {soft_spot} 같은 포인트가 느껴져서 더 끌린다."
-        return f"다음엔 {interest} 얘기도 같이 꺼내면 훨씬 분위기 잘 붙을 것 같아."
-
-    def _pick_question(self, persona: Persona, user_text: str) -> str:
+            return self.rng.choice([
+                "ㅋㅋㅋ 뭐야 갑자기 심쿵이잖아.",
+                "야 그렇게 말하면 나도 좋아지잖아.",
+                "헐 ㅋㅋ 진심이야?",
+                "아 몰라 ㅋㅋ 좋다.",
+            ])
         if "뭐해" in user_text:
-            return "근데 지금 네가 진짜 제일 말하고 싶은 건 뭐야?"
+            return self.rng.choice([
+                "나? 그냥 누워있었어 ㅋㅋ",
+                "유튜브 보고 있었는데, 왜?",
+                "딱히 아무것도 안 하고 있었어~",
+                "너 생각하고 있었지 뭐 ㅋㅋ",
+            ])
         if "주말" in user_text:
-            return "주말엔 나를 어디로 데리고 가고 싶은데?"
-        return self.rng.choice(
-            [
-                "지금 이 대화에서 한 단계 더 올리려면 너는 어떤 한마디를 던질 거야?",
-                "그러면 내가 오늘 너한테 반응할 포인트를 하나만 더 줘봐.",
-                "좋아, 그 흐름이면 다음 톡은 조금 더 대담하게 가도 되겠는데?",
-            ]
-        )
+            interest = self.rng.choice(persona.interests)
+            return self.rng.choice([
+                f"주말? {interest} 어때?",
+                "아직 모르겠어~ 같이 뭐 할까?",
+                "나 주말에 약속 없어. 왜? ㅋㅋ",
+            ])
+        if "ㅋㅋ" in user_text or "ㅎㅎ" in user_text:
+            return self.rng.choice([
+                "ㅋㅋㅋ 뭔데",
+                "야 왜 웃어 ㅋㅋ",
+                "ㅋㅋ 뭐가 웃긴 건데?",
+                "ㅎㅎ",
+            ])
+        # Generic reactions by relationship mode
+        if persona.relationship_mode == "girlfriend":
+            return self.rng.choice([
+                "응응, 그래서?",
+                "아 진짜? ㅋㅋ",
+                "오 그렇구나~",
+                "헐 대박 ㅋㅋ",
+                "음... 그래그래.",
+                "아하 ㅋㅋ 알겠어.",
+            ])
+        return self.rng.choice([
+            "오 ㅋㅋ 그래?",
+            "아 진짜?",
+            "ㅋㅋ 뭐야",
+            "음 그렇구나.",
+            "헐 ㅋㅋ",
+            "오호?",
+        ])
 
-    def _pick_style_hook(self, persona: Persona) -> str:
+    def _pick_follow_up(self, persona: Persona, user_text: str, mood: MoodType) -> str:
+        """Pick a natural follow-up line based on mood."""
+        if mood == "flirty":
+            return self.rng.choice([
+                "근데 오늘 왜 이렇게 달달해?",
+                "계속 이러면 나 진짜 좋아지겠다.",
+                "",
+            ])
+        if mood == "playful":
+            return self.rng.choice([
+                "야 오늘 텐션 좋은데? ㅋㅋ",
+                "",
+                "ㅋㅋㅋ",
+            ])
+        if mood == "worried":
+            return self.rng.choice([
+                "진짜 괜찮아?",
+                "무슨 일 있으면 말해.",
+                "",
+            ])
+        if mood == "sulky":
+            return self.rng.choice([
+                "흠.",
+                "뭐... 알겠어.",
+                "",
+            ])
+        # neutral/happy/excited
+        interest = self.rng.choice(persona.interests)
+        return self.rng.choice([
+            f"아 맞다 나 요즘 {interest}에 빠졌어.",
+            "오늘 뭐 했어?",
+            "근데 갑자기 배고프다.",
+            "",
+            "",
+        ])
+
+    def _pick_signature(self, persona: Persona) -> str:
+        """Maybe append a signature phrase."""
         phrases = persona.style_profile.signature_phrases
-        if not phrases:
+        if not phrases or self.rng.random() > 0.3:
             return ""
         chosen = self.rng.choice(phrases)
-        if chosen in {"ㅋㅋ", "ㅎㅎ"}:
+        if chosen in {"ㅋㅋ", "ㅎㅎ", "ㅋㅋㅋ"}:
             return chosen
-        return f"그리고 네가 {chosen} 같은 결로 말하면 persona 유지가 훨씬 잘 돼."
-
-    def _mood_flavor(self, mood: MoodType, relationship_mode: str) -> str:
-        flavors: dict[str, list[str]] = {
-            "happy": [
-                "기분 좋은 거 다 티나 ㅋㅋ",
-                "이 텐션 좋다, 계속 이렇게 가자.",
-                "아 오늘 왜 이렇게 기분 좋지?",
-            ],
-            "playful": [
-                "ㅋㅋㅋ 지금 장난기 뿜뿜이네.",
-                "이 분위기면 나도 같이 놀아줘야지.",
-                "야, 오늘 텐션 미쳤다 ㅋㅋ",
-            ],
-            "sulky": [
-                "흠, 좀 아쉬운데.",
-                "그렇게 나오면 나도 좀 삐지는 거야.",
-                "아 진짜... 좀 서운하긴 하다.",
-            ],
-            "flirty": [
-                "지금 그런 말 하면 심장이 좀 그렇지 않아?",
-                "이런 분위기에서 나 어떡하라고.",
-                "그 말, 진심이면 나 좀 흔들리는데.",
-            ],
-            "worried": [
-                "괜찮아? 무리하지 마.",
-                "힘들면 말해, 내가 들어줄게.",
-                "좀 쉬어도 돼, 나 여기 있으니까.",
-            ],
-            "excited": [
-                "오 진짜?! 대박이다!",
-                "와, 그거 완전 좋은데!",
-                "헐 나도 흥분돼!",
-            ],
-        }
-        options = flavors.get(mood, [])
-        if not options:
-            return ""
-        return self.rng.choice(options)
+        return ""
 
 
 class OpenAIProvider:

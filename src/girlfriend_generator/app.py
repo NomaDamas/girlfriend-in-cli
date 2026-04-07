@@ -858,8 +858,9 @@ def _fit_messages(messages: list[ChatMessage], max_lines: int) -> list[ChatMessa
         if msg.role == "system":
             cost = 1
         else:
-            # Estimate: 3 lines for panel chrome + ~1 line per 40 chars
-            cost = 3 + max(0, len(msg.text) // 40)
+            # Panel: top border + text lines + bottom border = 2 + ceil(text/50)
+            text_lines = max(1, (len(msg.text) + 49) // 50)
+            cost = 2 + text_lines
         if used_lines + cost > max_lines and result:
             break
         result.append(msg)

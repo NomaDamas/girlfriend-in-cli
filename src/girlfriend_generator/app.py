@@ -100,32 +100,29 @@ class RawKeyboard:
         ready, _, _ = select.select([sys.stdin], [], [], timeout)
         if not ready:
             return None
-        data = os.read(self.fd, 1)
+        # Read up to 16 bytes at once to capture full multi-byte characters
+        # and IME-composed Korean input in a single read
+        data = os.read(self.fd, 16)
         if not data:
             return None
-        if data == b"\x1b":
-            # Drain a short escape sequence if present.
+        if data[0:1] == b"\x1b":
+            # Drain any remaining escape sequence bytes
             while True:
                 ready, _, _ = select.select([sys.stdin], [], [], 0)
                 if not ready:
                     break
                 data += os.read(self.fd, 1)
             return data.decode(errors="ignore")
-        # Handle multi-byte UTF-8 (Korean, emoji, etc.)
-        first = data[0]
-        if first >= 0xC0:
-            if first >= 0xF0:
-                remaining = 3
-            elif first >= 0xE0:
-                remaining = 2  # Korean characters (3 bytes total)
-            else:
-                remaining = 1
-            for _ in range(remaining):
-                extra = os.read(self.fd, 1)
-                if not extra:
-                    break
-                data += extra
-        return data.decode(errors="ignore")
+        # Drain any additional pending bytes (IME burst)
+        while True:
+            ready, _, _ = select.select([sys.stdin], [], [], 0)
+            if not ready:
+                break
+            extra = os.read(self.fd, 16)
+            if not extra:
+                break
+            data += extra
+        return data.decode(errors="replace")
 
 
 def run_chat_app(config: AppConfig) -> int:
@@ -785,7 +782,12 @@ def _render_header(persona: Persona, session: ConversationSession):
 
 def _render_chat(console: Console, session: ConversationSession, assistant_typing: bool):
     available_width = max(60, console.size.width - 38)
-    history = session.messages[-12:]
+    # Dynamically fit messages to terminal height (header=4, composer=5, borders=2)
+    available_lines = max(6, console.size.height - 11)
+    # Estimate ~3 lines per message, show as many recent messages as fit
+    max_messages = max(4, available_lines // 3)
+    # Filter out system messages for count, but show them
+    history = session.messages[-max_messages:]
     blocks = []
     for i, message in enumerate(history):
         is_read = True

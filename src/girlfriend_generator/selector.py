@@ -65,7 +65,7 @@ def arrow_select(
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
         # Clear the selector rendering
-        line_count = len(items) + 4  # items + title + border + footer
+        line_count = len(items) * 2 + 4
         sys.stdout.write(f"\033[{line_count}A\033[J")
         sys.stdout.flush()
 
@@ -78,37 +78,32 @@ def _render_selector(
     allow_back: bool,
 ) -> None:
     # Move cursor up to overwrite previous render
-    total_lines = len(items) + 4
+    total_lines = len(items) * 2 + 4  # each item gets 2 lines
     sys.stdout.write(f"\033[{total_lines}A\033[J")
     sys.stdout.flush()
 
-    lines = []
+    if title:
+        sys.stdout.write(f"\n  \033[1;97m{title}\033[0m\n")
+
     for i, item in enumerate(items):
         selected = i == cursor
+        icon = item.icon + " " if item.icon else ""
         if selected:
-            prefix = "  \033[1;35m>\033[0m "
-            icon = item.icon + " " if item.icon else ""
-            name = f"\033[1m{icon}{item.label}\033[0m"
-            desc = f"  \033[2m{item.description}\033[0m" if item.description else ""
+            # Highlighted item: bright background bar
+            sys.stdout.write(f"  \033[1;35m ▸ \033[0m\033[1;97m{icon}{item.label}\033[0m\n")
+            if item.description:
+                sys.stdout.write(f"      \033[36m{item.description}\033[0m\n")
+            else:
+                sys.stdout.write("\n")
         else:
-            prefix = "    "
-            icon = item.icon + " " if item.icon else ""
-            name = f"\033[2m{icon}{item.label}\033[0m"
-            desc = ""
-        lines.append(f"{prefix}{name}{desc}")
+            sys.stdout.write(f"  \033[2m   {icon}{item.label}\033[0m\n")
+            sys.stdout.write("\n")
 
-    if title:
-        sys.stdout.write(f"  \033[1m{title}\033[0m\n")
-    sys.stdout.write("  \033[2m─────────────────────────────\033[0m\n")
-    for line in lines:
-        sys.stdout.write(line + "\n")
-    sys.stdout.write("  \033[2m─────────────────────────────\033[0m\n")
-
-    nav = "\033[2m↑↓ navigate  Enter select"
+    nav_parts = ["\033[2m", "  ↑↓ ", "\033[0;2m", "move", "  \033[2m│\033[0;2m  ↵ ", "select"]
     if allow_back:
-        nav += "  Esc back"
-    nav += "\033[0m"
-    sys.stdout.write(f"  {nav}\n")
+        nav_parts += ["  \033[2m│\033[0;2m  esc ", "back"]
+    nav_parts.append("\033[0m")
+    sys.stdout.write("".join(nav_parts) + "\n")
     sys.stdout.flush()
 
 

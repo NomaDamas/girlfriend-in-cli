@@ -7,7 +7,8 @@ from .models import ChatMessage, MoodState, MoodType, Persona, TickResult
 
 
 def utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    """Return current time with local timezone for display."""
+    return datetime.now().astimezone()
 
 
 @dataclass(slots=True)

@@ -3,9 +3,9 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "girlfriend-generator"
+name = "girlfriend-in-cli"
 version = "0.1.0"
-description = "A CLI-first romance simulation chat for vibe coding breaks."
+description = "Girlfriend in CLI — terminal romance simulator for vibe coding breaks."
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = ["rich>=14,<15"]

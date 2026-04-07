@@ -259,43 +259,30 @@ def _launch_chat(
 
 
 _NERD_FRAMES = [
-    r"""
-     ┌─────────────────────────────────────────────────────┐
-     │  (•_•)  "I just want someone to text me first..."   │
-     │   <|>                                               │
-     │   / \    ♡ GIRLFRIEND GENERATOR ♡                   │
-     └─────────────────────────────────────────────────────┘
-    """,
-    r"""
-     ┌─────────────────────────────────────────────────────┐
-     │  (•‿•)  "Maybe today is the day..."                 │
-     │   \|/                                               │
-     │   / \    ♡ GIRLFRIEND GENERATOR ♡                   │
-     └─────────────────────────────────────────────────────┘
-    """,
-    r"""
-     ┌─────────────────────────────────────────────────────┐
-     │  (✧ᴗ✧)  "Compiling feelings... 100%!"              │
-     │   <|>   ♡                                           │
-     │   / \    ♡ GIRLFRIEND GENERATOR ♡                   │
-     └─────────────────────────────────────────────────────┘
-    """,
+    [
+        "  (•_•)   I just want someone",
+        "   <|>    to text me first...",
+        "   / \\",
+    ],
+    [
+        "  (•‿•)   Maybe today",
+        "   \\|/    is the day...",
+        "   / \\",
+    ],
+    [
+        "  (✧ᴗ✧)   Compiling feelings",
+        "   <|> ♡   ...100%!",
+        "   / \\",
+    ],
 ]
 
-_WELCOME_ART = r"""
-  ██████╗ ██╗██████╗ ██╗     ███████╗██████╗ ██╗███████╗███╗   ██╗██████╗
- ██╔════╝ ██║██╔══██╗██║     ██╔════╝██╔══██╗██║██╔════╝████╗  ██║██╔══██╗
- ██║  ███╗██║██████╔╝██║     █████╗  ██████╔╝██║█████╗  ██╔██╗ ██║██║  ██║
- ██║   ██║██║██╔══██╗██║     ██╔══╝  ██╔══██╗██║██╔══╝  ██║╚██╗██║██║  ██║
- ╚██████╔╝██║██║  ██║███████╗██║     ██║  ██║██║███████╗██║ ╚████║██████╔╝
-  ╚═════╝ ╚═╝╚═╝  ╚═╝╚══════╝╚═╝     ╚═╝  ╚═╝╚═╝╚══════╝╚═╝  ╚═══╝╚═════╝
-
-  ██████╗ ███████╗███╗   ██╗███████╗██████╗  █████╗ ████████╗ ██████╗ ██████╗
- ██╔════╝ ██╔════╝████╗  ██║██╔════╝██╔══██╗██╔══██╗╚══██╔══╝██╔═══██╗██╔══██╗
- ██║  ███╗█████╗  ██╔██╗ ██║█████╗  ██████╔╝███████║   ██║   ██║   ██║██████╔╝
- ██║   ██║██╔══╝  ██║╚██╗██║██╔══╝  ██╔══██╗██╔══██║   ██║   ██║   ██║██╔══██╗
- ╚██████╔╝███████╗██║ ╚████║███████╗██║  ██║██║  ██║   ██║   ╚██████╔╝██║  ██║
-  ╚═════╝ ╚══════╝╚═╝  ╚═══╝╚══════╝╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝    ╚═════╝ ╚═╝  ╚═╝
+_LOGO = """
+ ╔═╗ ╦ ╦═╗ ╦   ╔═╗ ╦═╗ ╦ ╔═╗ ╔╗╔ ╔╦╗
+ ║ ╦ ║ ╠╦╝ ║   ╠╣  ╠╦╝ ║ ║╣  ║║║  ║║
+ ╚═╝ ╩ ╩╚═ ╩═╝ ╚   ╩╚═ ╩ ╚═╝ ╝╚╝ ═╩╝
+          ╦ ╔╗╔   ╔═╗ ╦   ╦
+          ║ ║║║   ║   ║   ║
+          ╩ ╝╚╝   ╚═╝ ╩═╝ ╩
 """
 
 _MODE_ICONS = {
@@ -313,21 +300,23 @@ _PERF_ICONS = {
 def _play_intro(console: "Console") -> None:  # type: ignore[name-defined]
     """Play the nerd animation intro."""
     import time
+    from rich.panel import Panel
     from rich.text import Text
 
     for frame in _NERD_FRAMES:
         console.clear()
-        text = Text(frame)
-        text.stylize("bright_magenta")
-        console.print(text)
-        time.sleep(0.7)
+        console.print()
+        for line in frame:
+            console.print(f"  [bright_magenta]{line}[/bright_magenta]")
+        console.print()
+        time.sleep(0.6)
 
     # Final logo
     console.clear()
-    logo = Text(_WELCOME_ART)
+    logo = Text(_LOGO)
     logo.stylize("bold bright_magenta")
-    console.print(logo)
-    time.sleep(0.5)
+    console.print(Panel(logo, border_style="bright_magenta", padding=(0, 2)))
+    time.sleep(0.4)
 
 
 def _show_main_menu(
@@ -348,13 +337,14 @@ def _show_main_menu(
         _play_intro(console)
         console.clear()
 
-    # Big logo
-    logo = Text(_WELCOME_ART)
+    # Logo
+    logo = Text(_LOGO)
     logo.stylize("bold bright_magenta")
     console.print(Panel(
         logo,
         border_style="bright_magenta",
-        padding=(0, 1),
+        padding=(0, 2),
+        subtitle="[dim italic]terminal romance simulator  |  v0.1.0[/dim italic]",
     ))
 
     # Nerd character + settings

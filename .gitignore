@@ -10,3 +10,9 @@ sessions/
 .codex/ontology-unstable.flag
 artifacts/
 .tmp/
+music/**/*.mp3
+music/**/*.m4a
+music/**/*.wav
+music/**/*.flac
+music/**/*.aac
+music/**/*.ogg

@@ -25,6 +25,7 @@ from .models import MOOD_EMOJI, ChatMessage, Persona, ProviderReply, RuntimeTrac
 from .personas import load_persona
 from .providers import ProviderConfig, build_provider
 from .session_io import export_session, load_session_messages
+from .music import build_music_player
 from .voice import build_voice_input, build_voice_output
 
 
@@ -148,6 +149,7 @@ def run_chat_app(config: AppConfig) -> int:
     )
     voice_output = build_voice_output(config.voice_output)
     voice_input = build_voice_input(config.voice_input_command)
+    music_player = build_music_player()
     trace = RuntimeTrace(
         persona_path=config.persona_path,
         provider_name=config.provider_name,
@@ -257,6 +259,7 @@ def run_chat_app(config: AppConfig) -> int:
                 trace.pending_initiative_in = session.seconds_until_initiative(now)
                 _sync_provider_trace(provider, trace)
                 trace.status_line = status_line
+                music_player.update_mood(session.mood.current)
 
                 poll_timeout = (
                     config.input_poll_active_seconds
@@ -279,6 +282,7 @@ def run_chat_app(config: AppConfig) -> int:
                         voice_output_enabled=voice_output_enabled,
                         show_trace=show_trace,
                         session_dir=config.session_dir,
+                        music_player=music_player,
                     )
                     draft = outcome["draft"]
                     status_line = outcome["status_line"]
@@ -329,6 +333,7 @@ def run_chat_app(config: AppConfig) -> int:
                     )
                     last_render_key = render_key
     finally:
+        music_player.stop()
         if config.export_on_exit and session.messages:
             export_session(
                 session_dir=config.session_dir,
@@ -397,6 +402,7 @@ def _handle_key(
     voice_output_enabled: bool,
     show_trace: bool,
     session_dir: Path,
+    music_player: Any = None,
 ) -> dict[str, Any]:
     if key in {"\x03", "\x04"}:
         return {
@@ -453,6 +459,7 @@ def _handle_key(
                 voice_output_enabled=voice_output_enabled,
                 show_trace=show_trace,
                 session_dir=session_dir,
+                music_player=music_player,
             )
         session.add_user_message(text)
         mood = session.mood.current
@@ -515,6 +522,7 @@ def _handle_command(
     voice_output_enabled: bool,
     show_trace: bool,
     session_dir: Path,
+    music_player: Any = None,
 ) -> dict[str, Any]:
     lowered = text.lower()
     if lowered == "/quit":
@@ -528,7 +536,7 @@ def _handle_command(
         }
     if lowered == "/help":
         session.add_system_message(
-            "Commands: /help, /quit, /trace, /status, /affection, /export, /reload, /voice on, /voice off, /listen"
+            "Commands: /help /quit /trace /status /affection /export /music /voice on|off /listen"
         )
         return {
             "draft": "",
@@ -641,6 +649,38 @@ def _handle_command(
             "pending_job": pending_job,
             "show_trace": show_trace,
             "voice_output_enabled": enabled,
+            "quit": False,
+        }
+    if lowered in {"/music", "/music on", "/music off"}:
+        if music_player is None or music_player.name == "unavailable":
+            session.add_system_message("Music is unavailable (requires macOS afplay).")
+            return {
+                "draft": "",
+                "status_line": "Music unavailable.",
+                "pending_job": pending_job,
+                "show_trace": show_trace,
+                "voice_output_enabled": voice_output_enabled,
+                "quit": False,
+            }
+        if lowered == "/music on":
+            music_player.enabled = True
+            music_player.update_mood(session.mood.current)
+            session.add_system_message("Music enabled. Add .mp3 files to music/{mood}/ folders.")
+        elif lowered == "/music off":
+            music_player.enabled = False
+            music_player.stop()
+            session.add_system_message("Music disabled.")
+        else:
+            result = music_player.toggle()
+            if result:
+                music_player.update_mood(session.mood.current)
+            session.add_system_message(f"Music {'enabled' if result else 'disabled'}.")
+        return {
+            "draft": "",
+            "status_line": f"Music {music_player.name}.",
+            "pending_job": pending_job,
+            "show_trace": show_trace,
+            "voice_output_enabled": voice_output_enabled,
             "quit": False,
         }
     if lowered == "/listen":

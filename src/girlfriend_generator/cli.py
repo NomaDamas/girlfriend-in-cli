@@ -329,16 +329,23 @@ def _show_main_menu(
             padding=(1, 2),
         ),
         Panel(
-            "[bold white]Resume[/bold white]\n[dim]Continue a previous\nchat session[/dim]",
-            border_style="bright_cyan",
-            title="[bold bright_cyan]2[/bold bright_cyan]",
+            "[bold white]Create[/bold white]\n[dim]Build your own custom\npersona from scratch[/dim]",
+            border_style="bright_green",
+            title="[bold bright_green]2[/bold bright_green]",
             width=28,
             padding=(1, 2),
         ),
         Panel(
-            "[bold white]Settings[/bold white]\n[dim]Provider, performance\nvoice, trace[/dim]",
+            "[bold white]Resume[/bold white]\n[dim]Continue a previous\nchat session[/dim]",
+            border_style="bright_cyan",
+            title="[bold bright_cyan]3[/bold bright_cyan]",
+            width=28,
+            padding=(1, 2),
+        ),
+        Panel(
+            "[bold white]Settings[/bold white]\n[dim]Provider, performance\nvoice, music[/dim]",
             border_style="bright_yellow",
-            title="[bold bright_yellow]3[/bold bright_yellow]",
+            title="[bold bright_yellow]4[/bold bright_yellow]",
             width=28,
             padding=(1, 2),
         ),
@@ -348,7 +355,7 @@ def _show_main_menu(
 
     while True:
         try:
-            choice = input("  \033[1;35m>\033[0m Select [\033[1;35m1\033[0m/\033[1;36m2\033[0m/\033[1;33m3\033[0m/\033[2mq\033[0m]: ").strip().lower()
+            choice = input("  \033[1;35m>\033[0m Select [\033[1;35m1\033[0m/\033[1;32m2\033[0m/\033[1;36m3\033[0m/\033[1;33m4\033[0m/\033[2mq\033[0m]: ").strip().lower()
         except (EOFError, KeyboardInterrupt):
             console.print("\n  [dim]Goodbye.[/dim]")
             return None
@@ -364,20 +371,171 @@ def _show_main_menu(
 
         if choice == "2":
             console.print()
+            created = _create_persona_wizard(console)
+            if created is not None:
+                return args, created, None
+            console.clear()
+            return _show_main_menu(bundled_personas, args)
+
+        if choice == "3":
+            console.print()
             resume_result = _pick_session_to_resume(console, bundled_personas)
             if resume_result is None:
                 continue
             persona_path, resume_path = resume_result
             return args, resolve_persona_path(persona_path), resume_path
 
-        if choice == "3":
+        if choice == "4":
             console.print()
             _settings_menu(console, args)
-            # Re-render the menu
             console.clear()
             return _show_main_menu(bundled_personas, args)
 
-        console.print("  [red]1, 2, 3, or q[/red]")
+        console.print("  [red]1, 2, 3, 4, or q[/red]")
+
+
+def _create_persona_wizard(console: "Console") -> Path | None:  # type: ignore[name-defined]
+    from rich.panel import Panel
+    from rich.text import Text
+
+    console.print(Panel(
+        "[bold bright_green]  Persona Creator  [/bold bright_green]\n\n"
+        "[dim]Build a custom persona step by step.\n"
+        "Fill in the details to create your own character.[/dim]",
+        border_style="bright_green",
+        width=60,
+        padding=(1, 2),
+    ))
+
+    def _ask(prompt: str, default: str = "") -> str:
+        suffix = f" [dim]({default})[/dim]" if default else ""
+        try:
+            val = input(f"  \033[1;32m>\033[0m {prompt}{suffix}: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            return default
+        return val if val else default
+
+    def _ask_list(prompt: str, hint: str = "") -> list[str]:
+        hint_str = f" [dim]({hint})[/dim]" if hint else ""
+        try:
+            val = input(f"  \033[1;32m>\033[0m {prompt}{hint_str}: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            return []
+        return [item.strip() for item in val.split(",") if item.strip()]
+
+    console.print("\n  [bold]Basic Info[/bold]")
+    console.print("  [dim]─────────────────────────────[/dim]")
+    name = _ask("Name (이름)", "")
+    if not name:
+        console.print("  [red]Name is required.[/red]")
+        return None
+
+    age_str = _ask("Age (나이)", "25")
+    try:
+        age = int(age_str)
+        if age < 20:
+            console.print("  [red]Must be 20 or older.[/red]")
+            return None
+    except ValueError:
+        age = 25
+
+    console.print("\n  [bold]Relationship[/bold]")
+    console.print("  [dim]─────────────────────────────[/dim]")
+    console.print("  [dim]1) girlfriend (연인)  2) crush (썸)[/dim]")
+    mode_choice = _ask("Relationship mode", "2")
+    mode = "girlfriend" if mode_choice == "1" else "crush"
+
+    console.print("\n  [bold]Personality[/bold]")
+    console.print("  [dim]─────────────────────────────[/dim]")
+    background = _ask("Background (배경)", f"{name}은(는) 서울에서 일하는 {age}세 성인이다.")
+    situation = _ask("Situation (상황)", "가볍게 대화하며 호감을 키워가는 단계")
+    texting_style = _ask("Texting style (말투)", "짧고 리듬감 있게, 장난과 진심을 섞어서")
+
+    console.print("\n  [bold]Details[/bold]  [dim](comma-separated)[/dim]")
+    console.print("  [dim]─────────────────────────────[/dim]")
+    interests = _ask_list("Interests (관심사)", "e.g. 카페, 영화, 러닝")
+    if not interests:
+        interests = ["카페", "산책", "음악"]
+    soft_spots = _ask_list("Soft spots (약점)", "e.g. 세심한 안부, 센스 있는 장난")
+    if not soft_spots:
+        soft_spots = ["성의 있는 리액션", "자연스러운 배려"]
+    boundaries = _ask_list("Boundaries (경계선)", "e.g. 집착, 무성의한 답변")
+    if not boundaries:
+        boundaries = ["과한 집착", "감정 회피"]
+
+    console.print("\n  [bold]Greeting & Style[/bold]")
+    console.print("  [dim]─────────────────────────────[/dim]")
+    greeting = _ask("First message (첫 인사)", f"야, 뭐 해? 심심해서 톡했어 :)")
+    accent_color = _ask("Theme color (magenta/cyan/yellow/green)", "magenta")
+    if accent_color not in ("magenta", "cyan", "yellow", "green", "red", "blue"):
+        accent_color = "magenta"
+
+    console.print("\n  [bold]Extra Context[/bold]  [dim](optional, paste text or leave empty)[/dim]")
+    console.print("  [dim]─────────────────────────────[/dim]")
+    context_desc = _ask("Description or notes about this person", "")
+
+    # Build the persona JSON
+    from .session_io import slugify
+    persona_data = {
+        "name": name,
+        "age": age,
+        "relationship_mode": mode,
+        "background": background,
+        "situation": situation,
+        "texting_style": texting_style,
+        "interests": interests,
+        "soft_spots": soft_spots,
+        "boundaries": boundaries,
+        "greeting": greeting,
+        "accent_color": accent_color,
+        "provider_system_hint": f"{name}의 말투와 성격을 자연스럽게 유지한다.",
+        "context_summary": context_desc if context_desc else f"{name}과(와)의 대화 시뮬레이션",
+        "typing": {"min_seconds": 0.9, "max_seconds": 3.2},
+        "nudge_policy": {
+            "idle_after_seconds": 35,
+            "follow_up_after_seconds": 70,
+            "max_nudges": 2,
+            "templates": [
+                f"왜 답장 안 해? 나 기다리고 있었는데.",
+                f"진짜 바쁜 거야? 아니면 일부러 뜸 들이는 거야?",
+            ],
+        },
+        "style_profile": {
+            "warmth": 0.7,
+            "teasing": 0.6,
+            "directness": 0.5,
+            "message_length": "short-medium",
+            "emoji_level": "low",
+            "signature_phrases": ["ㅋㅋ", "ㅎㅎ", "진짜?"],
+        },
+        "initiative_profile": {
+            "min_interval_seconds": 600,
+            "max_interval_seconds": 2400,
+            "spontaneity": 0.55,
+            "opener_templates": [
+                f"야, 뭐 해? 갑자기 네 생각나서 톡했어.",
+                f"심심해서 왔어. 오늘 뭐 했어?",
+            ],
+            "follow_up_templates": [
+                "그냥 네가 뭐 하나 궁금해서.",
+                "별 건 아닌데, 톡하고 싶었어.",
+            ],
+        },
+    }
+
+    # Save to personas/
+    filename = f"{slugify(name)}-custom.json"
+    persona_dir = bundled_persona_dir()
+    persona_dir.mkdir(parents=True, exist_ok=True)
+    save_path = persona_dir / filename
+    save_path.write_text(
+        json.dumps(persona_data, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+    console.print(f"\n  [bold green]Persona saved: {save_path.name}[/bold green]")
+    console.print(f"  [bold green]Starting chat with {name}...[/bold green]\n")
+    return save_path
 
 
 def _pick_session_to_resume(

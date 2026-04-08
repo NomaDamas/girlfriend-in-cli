@@ -54,6 +54,7 @@ class PendingDelivery:
     text: str
     due_at: float
     trace_note: str
+    typing_starts_at: float | None = None  # when to show "typing..." indicator
 
 
 class BackgroundJob:
@@ -318,7 +319,7 @@ def run_chat_app(config: AppConfig) -> int:
                     trace=trace,
                     show_trace=show_trace,
                     status_line=status_line,
-                    assistant_typing=pending_job is not None or pending_delivery is not None,
+                    assistant_typing=_show_typing_indicator(pending_job, pending_delivery),
                     user_typing=user_typing,
                     scroll_offset=scroll_offset,
                 )
@@ -332,8 +333,7 @@ def run_chat_app(config: AppConfig) -> int:
                             trace=trace,
                             show_trace=show_trace,
                             status_line=status_line,
-                            assistant_typing=pending_job is not None
-                            or pending_delivery is not None,
+                            assistant_typing=_show_typing_indicator(pending_job, pending_delivery),
                             user_typing=user_typing,
                             scroll_offset=scroll_offset,
                         ),
@@ -386,10 +386,15 @@ def _finish_job(
         if not isinstance(reply, ProviderReply):
             session.add_system_message("Unexpected reply object from provider.")
             return None, previous_delivery, previous_status
+        # Add "seen" delay before typing indicator shows (1-2.5s)
+        import random
+        seen_delay = random.uniform(1.0, 2.5)
+        now = time.monotonic()
         delivery = PendingDelivery(
             kind="reply",
             text=reply.text,
-            due_at=time.monotonic() + reply.typing_seconds,
+            due_at=now + seen_delay + reply.typing_seconds,
+            typing_starts_at=now + seen_delay,
             trace_note=reply.trace_note,
         )
         return None, delivery, reply.trace_note
@@ -1062,6 +1067,20 @@ def _assistant_busy(
     pending_delivery: PendingDelivery | None,
 ) -> bool:
     return pending_job is not None or pending_delivery is not None
+
+
+def _show_typing_indicator(
+    pending_job: BackgroundJob | None,
+    pending_delivery: PendingDelivery | None,
+) -> bool:
+    """Show typing dots only after the 'seen' delay has passed."""
+    if pending_job is not None:
+        return True  # generating reply, show thinking
+    if pending_delivery is not None:
+        if pending_delivery.typing_starts_at is not None:
+            return time.monotonic() >= pending_delivery.typing_starts_at
+        return True  # nudge/initiative: show immediately
+    return False
 
 
 def _supports_interactive_chat() -> bool:

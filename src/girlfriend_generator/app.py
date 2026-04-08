@@ -293,7 +293,9 @@ def run_chat_app(config: AppConfig) -> int:
                         scroll_offset = min(scroll_offset, max_scroll)
                         if scroll_offset == 0:
                             status_line = "Latest messages."
-                    if outcome["quit"]:
+                    if outcome.get("quit"):
+                        if outcome.get("back"):
+                            return 2  # signal: back to main menu
                         live.update(
                             _render_screen(
                                 console=console,
@@ -444,13 +446,25 @@ def _handle_key(
         }
 
     if key == "\x1b":
+        if draft:
+            # Esc with draft: clear draft
+            return {
+                "draft": "",
+                "status_line": "Draft cleared.",
+                "pending_job": pending_job,
+                "show_trace": show_trace,
+                "voice_output_enabled": voice_output_enabled,
+                "quit": False,
+            }
+        # Esc with empty draft: back to menu
         return {
             "draft": "",
-            "status_line": "Draft cleared.",
+            "status_line": "Back to main menu.",
             "pending_job": pending_job,
             "show_trace": show_trace,
             "voice_output_enabled": voice_output_enabled,
-            "quit": False,
+            "quit": True,
+            "back": True,
         }
 
     if key in {"\r", "\n"}:
@@ -563,9 +577,19 @@ def _handle_command(
             "voice_output_enabled": voice_output_enabled,
             "quit": True,
         }
+    if lowered == "/back":
+        return {
+            "draft": "",
+            "status_line": "Back to main menu.",
+            "pending_job": pending_job,
+            "show_trace": show_trace,
+            "voice_output_enabled": voice_output_enabled,
+            "quit": True,
+            "back": True,
+        }
     if lowered == "/help":
         session.add_system_message(
-            "Commands: /help /quit /trace /status /affection /export /music /voice on|off /listen"
+            "Commands: /help /back /quit /trace /status /affection /export /music /voice on|off /listen"
         )
         return {
             "draft": "",
@@ -927,7 +951,7 @@ def _render_composer(draft: str, status_line: str, user_typing: bool):
         prompt = f" {draft}{cursor}"
     else:
         prompt = " [dim italic]메시지를 입력하세요...[/dim italic]"
-    keys = "[dim]Enter[/dim] send  [dim]Esc[/dim] clear  [dim]↑↓[/dim] scroll  [dim]/help[/dim] cmds"
+    keys = "[dim]Enter[/dim] send  [dim]Esc[/dim] back  [dim]↑↓[/dim] scroll  [dim]/help[/dim] cmds"
     status = f"[dim italic]{status_line}[/dim italic]"
     title = "[bright_blue]typing...[/bright_blue]" if user_typing else "[dim]message[/dim]"
     return Panel(

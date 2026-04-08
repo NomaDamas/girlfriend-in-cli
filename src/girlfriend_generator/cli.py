@@ -173,11 +173,18 @@ def main() -> int:
 
     # Show main menu when run without flags in a TTY
     if not _has_any_flags(args) and sys.stdin.isatty() and bundled_personas:
-        result = _show_main_menu(bundled_personas, args)
-        if result is None:
-            return 0
-        args, persona_path, resume_path = result
-        return _launch_chat(args, parser, persona_path, None, resume_path)
+        while True:
+            result = _show_main_menu(bundled_personas, args)
+            if result is None:
+                return 0
+            args, persona_path, resume_path = result
+            exit_code = _launch_chat(args, parser, persona_path, None, resume_path)
+            if exit_code != 2:  # 2 = back to menu
+                return exit_code
+            # Re-discover personas (user may have created new ones)
+            persona_dir = bundled_persona_dir()
+            bundled_personas = discover_personas(persona_dir) if persona_dir.exists() else []
+            args = build_parser().parse_args()  # reset args
 
     persona_override = None
     if args.provider == "remote":

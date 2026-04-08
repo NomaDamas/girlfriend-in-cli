@@ -216,12 +216,14 @@ def run_chat_app(config: AppConfig) -> int:
                         )
 
                 if pending_delivery and time.monotonic() >= pending_delivery.due_at:
+                    delivered_text = pending_delivery.text
                     if pending_delivery.kind == "nudge":
-                        delivered_text = session.consume_nudge()
+                        # Use LLM-generated text, just update session state
+                        session.add_assistant_message(delivered_text, schedule_nudge=True)
+                        session.nudge_count += 1
                     elif pending_delivery.kind == "initiative":
-                        delivered_text = session.consume_initiative(pending_delivery.text)
+                        session.consume_initiative(delivered_text)
                     else:
-                        delivered_text = pending_delivery.text
                         session.add_assistant_message(delivered_text, schedule_nudge=True)
                     trace.status_line = pending_delivery.trace_note
                     status_line = pending_delivery.trace_note

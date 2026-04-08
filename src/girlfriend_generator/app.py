@@ -82,38 +82,52 @@ class BackgroundJob:
 
 
 class RawKeyboard:
+    """Hybrid keyboard: raw mode for special keys, readline for text input."""
+
     def __init__(self) -> None:
         self.fd = sys.stdin.fileno()
         self._old_settings: list[Any] | None = None
+        self._raw = False
 
     def __enter__(self) -> "RawKeyboard":
         if not sys.stdin.isatty():
             raise RuntimeError("Interactive chat requires a TTY.")
         self._old_settings = termios.tcgetattr(self.fd)
-        tty.setcbreak(self.fd)
+        self._enter_raw()
         return self
 
     def __exit__(self, *_: Any) -> None:
         if self._old_settings is not None:
             termios.tcsetattr(self.fd, termios.TCSADRAIN, self._old_settings)
 
+    def _enter_raw(self) -> None:
+        if not self._raw:
+            tty.setcbreak(self.fd)
+            self._raw = True
+
+    def _exit_raw(self) -> None:
+        if self._raw and self._old_settings is not None:
+            termios.tcsetattr(self.fd, termios.TCSADRAIN, self._old_settings)
+            self._raw = False
+
     def poll(self, timeout: float) -> str | None:
+        """Poll for special keys (Esc, arrows, Ctrl+C/D, Enter)."""
+        if not self._raw:
+            self._enter_raw()
         ready, _, _ = select.select([sys.stdin], [], [], timeout)
         if not ready:
             return None
-        # Read initial bytes
         data = os.read(self.fd, 64)
         if not data:
             return None
         if data[0:1] == b"\x1b":
-            # Drain escape sequence
             while True:
                 ready, _, _ = select.select([sys.stdin], [], [], 0)
                 if not ready:
                     break
                 data += os.read(self.fd, 1)
             return data.decode(errors="ignore")
-        # Wait briefly for IME composition to finish, then drain
+        # Drain any additional pending bytes
         time.sleep(0.02)
         while True:
             ready, _, _ = select.select([sys.stdin], [], [], 0)
@@ -124,6 +138,21 @@ class RawKeyboard:
                 break
             data += extra
         return data.decode(errors="replace")
+
+    def read_line(self, live: Any) -> str | None:
+        """Temporarily exit raw mode to use readline for Korean IME support."""
+        self._exit_raw()
+        live.stop()
+        try:
+            sys.stdout.write("\r\033[K  \033[1;35m>\033[0m ")
+            sys.stdout.flush()
+            line = input()
+            return line.strip()
+        except (EOFError, KeyboardInterrupt):
+            return None
+        finally:
+            self._enter_raw()
+            live.start()
 
 
 def run_chat_app(config: AppConfig) -> int:
@@ -268,21 +297,47 @@ def run_chat_app(config: AppConfig) -> int:
                 key = keyboard.poll(poll_timeout)
                 if key is not None:
                     last_key_at = time.monotonic()
-                    outcome = _handle_key(
-                        key=key,
-                        draft=draft,
-                        session=session,
-                        persona=persona,
-                        provider=provider,
-                        pending_job=pending_job,
-                        pending_delivery=pending_delivery,
-                        voice_input=voice_input,
-                        voice_output_available=voice_output.name != "off",
-                        voice_output_enabled=voice_output_enabled,
-                        show_trace=show_trace,
-                        session_dir=config.session_dir,
-                        music_player=music_player,
-                    )
+
+                    # Enter key → switch to readline for Korean IME support
+                    if key in {"\r", "\n"} and not draft and not _assistant_busy(pending_job, pending_delivery):
+                        text = keyboard.read_line(live)
+                        if text is None:
+                            # Ctrl+C during input
+                            continue
+                        if not text:
+                            continue
+                        # Treat as if user typed and sent the message
+                        outcome = _handle_key(
+                            key="\r",
+                            draft=text,
+                            session=session,
+                            persona=persona,
+                            provider=provider,
+                            pending_job=pending_job,
+                            pending_delivery=pending_delivery,
+                            voice_input=voice_input,
+                            voice_output_available=voice_output.name != "off",
+                            voice_output_enabled=voice_output_enabled,
+                            show_trace=show_trace,
+                            session_dir=config.session_dir,
+                            music_player=music_player,
+                        )
+                    else:
+                        outcome = _handle_key(
+                            key=key,
+                            draft=draft,
+                            session=session,
+                            persona=persona,
+                            provider=provider,
+                            pending_job=pending_job,
+                            pending_delivery=pending_delivery,
+                            voice_input=voice_input,
+                            voice_output_available=voice_output.name != "off",
+                            voice_output_enabled=voice_output_enabled,
+                            show_trace=show_trace,
+                            session_dir=config.session_dir,
+                            music_player=music_player,
+                        )
                     draft = outcome["draft"]
                     status_line = outcome["status_line"]
                     pending_job = outcome["pending_job"]
@@ -895,9 +950,10 @@ def _fit_messages(messages: list[ChatMessage], max_lines: int) -> list[ChatMessa
         if msg.role == "system":
             cost = 1
         else:
-            # Panel: top border + text lines + bottom border = 2 + ceil(text/50)
-            text_lines = max(1, (len(msg.text) + 49) // 50)
-            cost = 2 + text_lines
+            # Bubble width is ~35 chars. Panel chrome = 4 lines (border top/bottom + title + subtitle)
+            # Text wraps at ~30 chars inside the bubble
+            text_lines = max(1, (len(msg.text) + 29) // 30)
+            cost = 4 + text_lines
         if used_lines + cost > max_lines and result:
             break
         result.append(msg)
@@ -955,8 +1011,8 @@ def _render_composer(draft: str, status_line: str, user_typing: bool):
         cursor = "[blink]|[/blink]"
         prompt = f" {draft}{cursor}"
     else:
-        prompt = " [dim italic]메시지를 입력하세요...[/dim italic]"
-    keys = "[dim]Enter[/dim] send  [dim]Esc[/dim] back  [dim]↑↓[/dim] scroll  [dim]/help[/dim] cmds"
+        prompt = " [dim italic]Enter를 눌러서 메시지 입력...[/dim italic]"
+    keys = "[dim]Enter[/dim] 입력  [dim]Esc[/dim] 뒤로  [dim]↑↓[/dim] 스크롤  [dim]/help[/dim]"
     status = f"[dim italic]{status_line}[/dim italic]"
     title = "[bright_blue]typing...[/bright_blue]" if user_typing else "[dim]message[/dim]"
     return Panel(

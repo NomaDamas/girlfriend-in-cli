@@ -21,6 +21,7 @@ from rich.table import Table
 from rich.text import Text
 
 from .engine import ConversationSession, utc_now
+from .hangul import HangulComposer
 from .models import MOOD_EMOJI, ChatMessage, Persona, ProviderReply, RuntimeTrace
 from .personas import load_persona
 from .providers import ProviderConfig, build_provider
@@ -178,7 +179,9 @@ def run_chat_app(config: AppConfig) -> int:
         session.bootstrap()
 
     draft = ""
-    status_line = "Enter to send. /help for commands."
+    hangul = HangulComposer()
+    hangul.korean_mode = True  # Start in Korean mode
+    status_line = "[한] Tab으로 한/영 전환"
     pending_job: BackgroundJob | None = None
     pending_delivery: PendingDelivery | None = None
     last_key_at = time.monotonic()
@@ -279,22 +282,49 @@ def run_chat_app(config: AppConfig) -> int:
                 key = keyboard.poll(poll_timeout)
                 if key is not None:
                     last_key_at = time.monotonic()
-                    outcome = _handle_key(
-                        key=key, draft=draft, session=session,
-                        persona=persona, provider=provider,
-                        pending_job=pending_job, pending_delivery=pending_delivery,
-                        voice_input=voice_input,
-                        voice_output_available=voice_output.name != "off",
-                        voice_output_enabled=voice_output_enabled,
-                        show_trace=show_trace, session_dir=config.session_dir,
-                        music_player=music_player,
-                    )
-                    draft = outcome["draft"]
-                    status_line = outcome["status_line"]
-                    pending_job = outcome["pending_job"]
-                    show_trace = outcome["show_trace"]
-                    voice_output_enabled = outcome["voice_output_enabled"]
-                    if "scroll_delta" in outcome:
+                    outcome = None
+
+                    # Tab = toggle Korean/English
+                    if key == "\t":
+                        hangul.korean_mode = not hangul.korean_mode
+                        mode_str = "한" if hangul.korean_mode else "EN"
+                        status_line = f"[{mode_str}] Tab으로 한/영 전환"
+                    # Backspace in Korean mode
+                    elif key in {"\x7f", "\b"} and hangul.korean_mode and hangul.text:
+                        hangul.backspace()
+                        draft = hangul.text
+                        status_line = "[한] 입력 중..." if draft else "[한] Tab으로 한/영 전환"
+                    # Printable ASCII key in Korean mode → feed to composer
+                    elif hangul.korean_mode and len(key) == 1 and key.isascii() and key.isprintable():
+                        hangul.feed(key)
+                        draft = hangul.text
+                        status_line = "[한] 입력 중..."
+                    else:
+                        # Commit any composing Korean before handling special keys
+                        if key in {"\r", "\n"} and hangul.composing:
+                            hangul._commit()
+                            draft = hangul.text
+                        outcome = _handle_key(
+                            key=key, draft=draft, session=session,
+                            persona=persona, provider=provider,
+                            pending_job=pending_job, pending_delivery=pending_delivery,
+                            voice_input=voice_input,
+                            voice_output_available=voice_output.name != "off",
+                            voice_output_enabled=voice_output_enabled,
+                            show_trace=show_trace, session_dir=config.session_dir,
+                            music_player=music_player,
+                        )
+                        draft = outcome["draft"]
+                        # Sync draft back to hangul
+                        hangul.clear()
+                        if draft:
+                            hangul.set_text(draft)
+                        status_line = outcome["status_line"]
+                        pending_job = outcome["pending_job"]
+                        show_trace = outcome["show_trace"]
+                        voice_output_enabled = outcome["voice_output_enabled"]
+
+                    if outcome and "scroll_delta" in outcome:
                         scroll_offset = max(0, scroll_offset + outcome["scroll_delta"])
                         max_scroll = max(0, len(session.messages) - 4)
                         scroll_offset = min(scroll_offset, max_scroll)
@@ -961,8 +991,8 @@ def _render_composer(draft: str, status_line: str, user_typing: bool):
     if draft:
         prompt = f" {draft}[blink]|[/blink]"
     else:
-        prompt = " [dim italic]메시지를 입력하세요...[/dim italic]"
-    keys = "[dim]Enter[/dim] 전송  [dim]Esc[/dim] 뒤로  [dim]↑↓[/dim] 스크롤  [dim]/help[/dim]"
+        prompt = " [dim italic]타이핑하면 바로 입력됩니다 (Tab: 한/영)[/dim italic]"
+    keys = "[dim]Enter[/dim] 전송  [dim]Tab[/dim] 한/영  [dim]Esc[/dim] 뒤로  [dim]↑↓[/dim] 스크롤"
     status = f"[dim italic]{status_line}[/dim italic]"
     title = "[bright_blue]typing...[/bright_blue]" if user_typing else "[dim]message[/dim]"
     return Panel(

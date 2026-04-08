@@ -115,7 +115,7 @@ class RawKeyboard:
                 data += os.read(self.fd, 1)
             return data.decode(errors="ignore")
         # Drain any remaining bytes (multi-byte chars, IME burst)
-        time.sleep(0.02)
+        time.sleep(0.01)
         while True:
             ready, _, _ = select.select([sys.stdin], [], [], 0)
             if not ready:
@@ -270,11 +270,14 @@ def run_chat_app(config: AppConfig) -> int:
                 trace.status_line = status_line
                 music_player.update_mood(session.mood.current)
 
-                poll_timeout = (
-                    config.input_poll_active_seconds
-                    if (pending_job is not None or pending_delivery is not None or draft)
-                    else config.input_poll_idle_seconds
-                )
+                # Poll faster when user is actively typing
+                recently_typed = (time.monotonic() - last_key_at) < 2.0
+                if recently_typed or draft:
+                    poll_timeout = 0.02  # 20ms — fast response while typing
+                elif pending_job is not None or pending_delivery is not None:
+                    poll_timeout = config.input_poll_active_seconds
+                else:
+                    poll_timeout = config.input_poll_idle_seconds
                 key = keyboard.poll(poll_timeout)
                 if key is not None:
                     last_key_at = time.monotonic()
@@ -806,7 +809,7 @@ def _render_screen(
     layout.split_column(
         Layout(_render_header(persona, session), size=4),
         Layout(name="middle"),
-        Layout(_render_composer(draft, status_line, user_typing), size=5),
+        Layout(_render_composer(draft, status_line, user_typing), size=max(5, 4 + (len(draft) // 50))),
     )
     if show_trace:
         layout["middle"].split_row(

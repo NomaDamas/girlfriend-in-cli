@@ -33,7 +33,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--provider",
         choices=["heuristic", "openai", "anthropic", "remote"],
-        default="heuristic",
+        default="openai",
         help="Reply generator backend.",
     )
     parser.add_argument(
@@ -142,7 +142,7 @@ def build_parser() -> argparse.ArgumentParser:
 def _has_any_flags(args: argparse.Namespace) -> bool:
     return any([
         args.persona,
-        args.provider != "heuristic",
+        args.provider not in ("heuristic", "openai"),
         args.list_personas,
         args.list_remote_personas,
         getattr(args, "resume", None),
@@ -326,6 +326,55 @@ def _play_intro(console: "Console") -> None:  # type: ignore[name-defined]
     time.sleep(0.5)
 
 
+_STAR_FLAG_PATH = Path.home() / ".girlfriend-in-cli" / "star_shown"
+_GITHUB_REPO = "NomaDamas/girlfriend-in-cli"
+
+
+def _show_star_popup(console: "Console") -> None:  # type: ignore[name-defined]
+    """Show GitHub star request once, then never again."""
+    if _STAR_FLAG_PATH.exists():
+        return
+
+    from rich.align import Align
+    from rich.panel import Panel
+    from rich.text import Text
+    import webbrowser
+
+    console.print()
+    body = Text.assemble(
+        ("\n", ""),
+        ("  (✧ᴗ✧)  ", "bold bright_magenta"),
+        ("이 프로젝트가 마음에 드셨다면\n", "white"),
+        ("         GitHub Star", "bold yellow"),
+        (" 하나가 개발자에게 큰 힘이 됩니다!\n\n", "white"),
+        (f"         github.com/{_GITHUB_REPO}\n", "dim"),
+    )
+    console.print(Align.center(Panel(
+        body,
+        border_style="bright_yellow",
+        title="[bold bright_yellow]  Star  [/bold bright_yellow]",
+        width=55,
+        padding=(0, 1),
+    )))
+
+    try:
+        answer = input("  Star 누르러 가기? (y/n): ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        answer = "n"
+
+    if answer in ("y", "yes", "ㅛ"):
+        url = f"https://github.com/{_GITHUB_REPO}"
+        try:
+            webbrowser.open(url)
+            console.print("  [green]브라우저에서 열렸습니다! 감사합니다![/green]\n")
+        except Exception:
+            console.print(f"  [dim]Open: {url}[/dim]\n")
+
+    # Mark as shown — never show again
+    _STAR_FLAG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _STAR_FLAG_PATH.write_text("shown", encoding="utf-8")
+
+
 def _show_main_menu(
     bundled_personas: list[Path],
     args: argparse.Namespace,
@@ -343,6 +392,7 @@ def _show_main_menu(
     # Play intro animation on first launch
     if not skip_intro:
         _play_intro(console)
+        _show_star_popup(console)
         console.clear()
 
     # Centered logo block
@@ -367,10 +417,14 @@ def _show_main_menu(
     console.print(Align.center(status))
     console.print()
 
+    # Count chat rooms
+    session_dir = bundled_session_dir()
+    room_count = len(list(session_dir.glob("*.json"))) if session_dir.exists() else 0
+
     menu_items = [
         MenuItem("New Chat", "Pick a persona and start chatting", icon="💬"),
+        MenuItem(f"Chat Rooms ({room_count})", "Continue saved conversations", icon="💌"),
         MenuItem("Create Persona", "Design your own character from scratch", icon="✨"),
-        MenuItem("Resume Session", "Continue where you left off", icon="💾"),
         MenuItem("Settings", "Provider, performance, API keys", icon="⚙️"),
         MenuItem("Quit", "See you next time", icon="👋"),
     ]
@@ -395,22 +449,22 @@ def _show_main_menu(
                 return _show_main_menu(bundled_personas, args, skip_intro=True)
             return args, resolve_persona_path(result), None
 
-        if choice == 1:  # Create Persona
+        if choice == 1:  # Chat Rooms
+            console.print()
+            room_result = _show_chat_rooms(console, bundled_personas)
+            if room_result is None:
+                console.clear()
+                return _show_main_menu(bundled_personas, args, skip_intro=True)
+            persona_path, resume_path = room_result
+            return args, resolve_persona_path(persona_path), resume_path
+
+        if choice == 2:  # Create Persona
             console.print()
             created = _create_persona_wizard(console)
             if created is not None:
                 return args, created, None
             console.clear()
             return _show_main_menu(bundled_personas, args, skip_intro=True)
-
-        if choice == 2:  # Resume
-            console.print()
-            resume_result = _pick_session_to_resume(console, bundled_personas)
-            if resume_result is None:
-                console.clear()
-                return _show_main_menu(bundled_personas, args, skip_intro=True)
-            persona_path, resume_path = resume_result
-            return args, resolve_persona_path(persona_path), resume_path
 
         if choice == 3:  # Settings
             console.print()
@@ -561,6 +615,119 @@ def _create_persona_wizard(console: "Console") -> Path | None:  # type: ignore[n
     console.print(f"\n  [bold green]Persona saved: {save_path.name}[/bold green]")
     console.print(f"  [bold green]Starting chat with {name}...[/bold green]\n")
     return save_path
+
+
+def _show_chat_rooms(
+    console: "Console",  # type: ignore[name-defined]
+    bundled_personas: list[Path],
+) -> tuple[Path, Path] | None:
+    """KakaoTalk-style chat room list with resume and delete."""
+    from .selector import MenuItem, arrow_select
+
+    session_dir = bundled_session_dir()
+    if not session_dir.exists() or not list(session_dir.glob("*.json")):
+        console.print("  [yellow]No chat rooms yet. Start a new chat first![/yellow]\n")
+        return None
+
+    while True:
+        session_files = sorted(session_dir.glob("*.json"), reverse=True)
+        if not session_files:
+            console.print("  [yellow]No chat rooms left.[/yellow]\n")
+            return None
+
+        rooms = []
+        for sf in session_files[:12]:
+            try:
+                data = json.loads(sf.read_text(encoding="utf-8"))
+                persona_name = data.get("persona", {}).get("name", "?")
+                mode = data.get("persona", {}).get("relationship_mode", "?")
+                msgs = data.get("messages", [])
+                msg_count = len(msgs)
+                # Last message preview
+                last_msg = ""
+                for m in reversed(msgs):
+                    if m.get("role") in ("user", "assistant"):
+                        last_msg = m.get("text", "")[:30]
+                        break
+                # Timestamp from filename
+                ts = sf.stem.split("-")[0] if "-" in sf.stem else ""
+                rooms.append({
+                    "path": sf,
+                    "persona_name": persona_name,
+                    "mode": mode,
+                    "msg_count": msg_count,
+                    "last_msg": last_msg,
+                    "ts": ts,
+                })
+            except Exception:
+                rooms.append({
+                    "path": sf,
+                    "persona_name": "?",
+                    "mode": "?",
+                    "msg_count": 0,
+                    "last_msg": "",
+                    "ts": "",
+                })
+
+        menu_items = []
+        for r in rooms:
+            icon = _MODE_ICONS.get(r["mode"], "💬")
+            preview = r["last_msg"] if r["last_msg"] else "(empty)"
+            menu_items.append(MenuItem(
+                f"{r['persona_name']}  ({r['msg_count']})",
+                preview,
+                icon=icon,
+            ))
+        menu_items.append(MenuItem("Back", "Return to main menu", icon="←"))
+
+        choice = arrow_select(
+            console, menu_items,
+            title="💌 Chat Rooms",
+            border_style="bright_cyan",
+        )
+
+        if choice is None or choice == len(rooms):  # Back
+            return None
+
+        selected = rooms[choice]
+
+        # Sub-menu: Resume or Delete
+        action_items = [
+            MenuItem("Resume Chat", "Continue this conversation", icon="▸"),
+            MenuItem("Delete Room", "Remove this chat room", icon="✕"),
+            MenuItem("Back", "Return to room list", icon="←"),
+        ]
+        action = arrow_select(
+            console, action_items,
+            title=f"{selected['persona_name']} — What to do?",
+            border_style="bright_cyan",
+        )
+
+        if action == 0:  # Resume
+            persona_path = _find_persona_by_name(selected["persona_name"], bundled_personas)
+            if persona_path is None and bundled_personas:
+                persona_path = bundled_personas[0]
+            elif persona_path is None:
+                console.print("  [red]Persona not found.[/red]")
+                continue
+            console.print(f"\n  [bold cyan]Resuming chat with {selected['persona_name']}...[/bold cyan]\n")
+            return persona_path, selected["path"]
+
+        if action == 1:  # Delete
+            try:
+                # Also delete matching .md file
+                md_path = selected["path"].with_suffix(".md")
+                selected["path"].unlink()
+                if md_path.exists():
+                    md_path.unlink()
+                console.print(f"  [red]Deleted: {selected['persona_name']} room[/red]\n")
+            except Exception:
+                console.print("  [red]Failed to delete.[/red]\n")
+            # Loop back to room list
+            continue
+
+        # action == 2 or None: back to room list
+        continue
 
 
 def _pick_session_to_resume(

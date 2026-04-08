@@ -72,7 +72,7 @@ def test_main_defaults_to_bundled_persona_outside_repository(
     assert exit_code == 0
     assert captured["config"].persona_path.parent == bundled_persona_dir()
     assert captured["config"].session_dir == project_root() / "sessions"
-    assert captured["config"].provider_name == "heuristic"
+    assert captured["config"].provider_name == "openai"
     assert captured["config"].performance_mode == "turbo"
     assert captured["config"].show_trace is True
     assert captured["config"].export_on_exit is True

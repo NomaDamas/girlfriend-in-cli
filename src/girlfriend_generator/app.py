@@ -139,14 +139,28 @@ class RawKeyboard:
             data += extra
         return data.decode(errors="replace")
 
-    def read_line(self, live: Any) -> str | None:
+    def read_line(self, live: Any, prefill: str = "") -> str | None:
         """Temporarily exit raw mode to use readline for Korean IME support."""
         self._exit_raw()
         live.stop()
         try:
-            sys.stdout.write("\r\033[K  \033[1;35m>\033[0m ")
+            # Show input prompt with prefilled character
+            sys.stdout.write(f"\r\033[K  \033[1;35m>\033[0m {prefill}")
             sys.stdout.flush()
-            line = input()
+            if prefill:
+                # Use readline with pre-inserted text
+                try:
+                    import readline
+                    readline.set_startup_hook(lambda: readline.insert_text(prefill))
+                    try:
+                        line = input()
+                    finally:
+                        readline.set_startup_hook()
+                except ImportError:
+                    line = input()
+                    line = prefill + line
+            else:
+                line = input()
             return line.strip()
         except (EOFError, KeyboardInterrupt):
             return None
@@ -298,44 +312,51 @@ def run_chat_app(config: AppConfig) -> int:
                 if key is not None:
                     last_key_at = time.monotonic()
 
-                    # Enter key → switch to readline for Korean IME support
-                    if key in {"\r", "\n"} and not draft and not _assistant_busy(pending_job, pending_delivery):
-                        text = keyboard.read_line(live)
+                    # Any printable key or Enter → readline mode for Korean IME
+                    is_printable = len(key) == 1 and key.isprintable()
+                    is_enter = key in {"\r", "\n"}
+                    if (is_printable or is_enter) and not _assistant_busy(pending_job, pending_delivery):
+                        # Pre-fill with the typed character if printable
+                        prefill = key if is_printable else ""
+                        text = keyboard.read_line(live, prefill=prefill)
                         if text is None:
-                            # Ctrl+C during input
                             continue
                         if not text:
                             continue
-                        # Treat as if user typed and sent the message
-                        outcome = _handle_key(
-                            key="\r",
-                            draft=text,
-                            session=session,
-                            persona=persona,
-                            provider=provider,
-                            pending_job=pending_job,
-                            pending_delivery=pending_delivery,
-                            voice_input=voice_input,
-                            voice_output_available=voice_output.name != "off",
-                            voice_output_enabled=voice_output_enabled,
-                            show_trace=show_trace,
-                            session_dir=config.session_dir,
-                            music_player=music_player,
-                        )
+                        if text.startswith("/"):
+                            # Command
+                            outcome = _handle_key(
+                                key="\r", draft=text, session=session,
+                                persona=persona, provider=provider,
+                                pending_job=pending_job, pending_delivery=pending_delivery,
+                                voice_input=voice_input,
+                                voice_output_available=voice_output.name != "off",
+                                voice_output_enabled=voice_output_enabled,
+                                show_trace=show_trace, session_dir=config.session_dir,
+                                music_player=music_player,
+                            )
+                        else:
+                            # Normal message — send directly
+                            session.add_user_message(text)
+                            scroll_offset = 0
+                            mood = session.mood.current
+                            pending_job = BackgroundJob(
+                                "reply", provider.generate_reply,
+                                persona, session.recent_history(),
+                                text, session.affection_score, mood,
+                            )
+                            draft = ""
+                            status_line = "..."
+                            continue
                     else:
                         outcome = _handle_key(
-                            key=key,
-                            draft=draft,
-                            session=session,
-                            persona=persona,
-                            provider=provider,
-                            pending_job=pending_job,
-                            pending_delivery=pending_delivery,
+                            key=key, draft=draft, session=session,
+                            persona=persona, provider=provider,
+                            pending_job=pending_job, pending_delivery=pending_delivery,
                             voice_input=voice_input,
                             voice_output_available=voice_output.name != "off",
                             voice_output_enabled=voice_output_enabled,
-                            show_trace=show_trace,
-                            session_dir=config.session_dir,
+                            show_trace=show_trace, session_dir=config.session_dir,
                             music_player=music_player,
                         )
                     draft = outcome["draft"]
@@ -1007,12 +1028,8 @@ def _render_message(
 
 
 def _render_composer(draft: str, status_line: str, user_typing: bool):
-    if draft:
-        cursor = "[blink]|[/blink]"
-        prompt = f" {draft}{cursor}"
-    else:
-        prompt = " [dim italic]Enter를 눌러서 메시지 입력...[/dim italic]"
-    keys = "[dim]Enter[/dim] 입력  [dim]Esc[/dim] 뒤로  [dim]↑↓[/dim] 스크롤  [dim]/help[/dim]"
+    prompt = " [dim italic]아무 키나 눌러서 입력 시작...[/dim italic]"
+    keys = "[dim]Type[/dim] 입력  [dim]Esc[/dim] 뒤로  [dim]↑↓[/dim] 스크롤  [dim]/help[/dim]"
     status = f"[dim italic]{status_line}[/dim italic]"
     title = "[bright_blue]typing...[/bright_blue]" if user_typing else "[dim]message[/dim]"
     return Panel(

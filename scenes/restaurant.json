@@ -1,0 +1,7 @@
+{
+  "name": "맛집",
+  "description": "골목 안쪽 숨은 맛집에서 같이 밥을 먹는 중. 분위기가 좋다.",
+  "mood_hint": "playful",
+  "bgm_mood": "happy",
+  "min_affection": 20
+}

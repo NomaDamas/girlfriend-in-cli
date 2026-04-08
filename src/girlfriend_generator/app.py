@@ -26,6 +26,11 @@ from .personas import load_persona
 from .providers import ProviderConfig, build_provider
 from .session_io import export_session, load_session_messages
 from .music import build_music_player
+from .scenes import (
+    SceneState, Scene, load_scenes, available_scenes,
+    build_evaluator_prompt, build_report_prompt,
+    parse_evaluator_response, parse_report_response, render_report_card,
+)
 from .voice import build_voice_input, build_voice_output
 
 
@@ -178,6 +183,10 @@ def run_chat_app(config: AppConfig) -> int:
     last_render_key: tuple[Any, ...] | None = None
     scroll_offset = 0  # 0 = latest messages, positive = scrolled up
     voice_output_enabled = config.voice_output and voice_output.name != "off"
+    all_scenes = load_scenes()
+    scene_state = SceneState()
+    if all_scenes:
+        scene_state.current_scene = all_scenes[0]  # Start at cafe
 
     try:
         with RawKeyboard() as keyboard, Live(
@@ -291,6 +300,89 @@ def run_chat_app(config: AppConfig) -> int:
                     )
                     draft = outcome["draft"]
                     scroll_offset = 0 if outcome.get("sent") else scroll_offset
+                    # Scene: handle pending proposal acceptance/rejection
+                    if outcome.get("sent") and scene_state.pending_proposal:
+                        user_text = session.messages[-1].text if session.messages else ""
+                        lower_text = user_text.lower()
+                        accept_words = ("좋아", "가자", "ㅇㅇ", "응", "그래", "오케이", "ok", "ㅇ", "가요", "가볼까")
+                        reject_words = ("싫어", "아니", "ㄴㄴ", "안가", "여기", "별로", "아직")
+                        if any(w in lower_text for w in accept_words):
+                            # Find the scene
+                            target = None
+                            for s in all_scenes:
+                                if s.name == scene_state.pending_proposal.next_scene:
+                                    target = s
+                                    break
+                            if target:
+                                # Generate report card
+                                try:
+                                    report_prompt = build_report_prompt(
+                                        persona, scene_state.current_scene or target,
+                                        target, session.messages,
+                                        session.affection_score, session.mood.current,
+                                    )
+                                    report_reply = provider.generate_reply(
+                                        persona, [], report_prompt,
+                                        session.affection_score, session.mood.current,
+                                    )
+                                    report = parse_report_response(
+                                        report_reply.text,
+                                        session.affection_score, session.mood.current,
+                                        target,
+                                    )
+                                except Exception:
+                                    from .scenes import ReportCard
+                                    report = ReportCard(
+                                        highlights=["(요약 생성 중 오류)"],
+                                        advice="자연스럽게 대화를 이어가보세요.",
+                                        scene_summary="",
+                                        affection=session.affection_score,
+                                        mood=session.mood.current,
+                                        next_scene_name=target.name,
+                                        next_scene_desc=target.description,
+                                    )
+                                # Show report card as system message
+                                session.add_system_message(render_report_card(report))
+                                # Transition
+                                scene_state.accept_transition(target)
+                                session.affection_score = min(100, session.affection_score + 5)
+                                session.mood.shift(target.mood_hint)
+                                # Clear messages for new scene, keep summary
+                                if report.scene_summary:
+                                    session.messages.clear()
+                                    session.add_system_message(f"[이전 장소 요약] {report.scene_summary}")
+                                    session.add_system_message(f"[현재 장소] {target.name} — {target.description}")
+                        elif any(w in lower_text for w in reject_words):
+                            scene_state.reject_transition()
+                            session.affection_score = max(0, session.affection_score - 2)
+                        # else: ambiguous response, keep proposal pending
+
+                    # Scene evaluator: check after every user message
+                    if outcome.get("sent") and all_scenes and not scene_state.pending_proposal:
+                        scene_state.record_user_message()
+                        if scene_state.should_evaluate() and pending_job is None:
+                            avail = available_scenes(
+                                all_scenes, session.affection_score,
+                                scene_state.current_scene.name if scene_state.current_scene else "",
+                            )
+                            if avail:
+                                eval_prompt = build_evaluator_prompt(
+                                    persona, scene_state.current_scene,
+                                    session.affection_score, session.mood.current,
+                                    session.recent_history(), avail,
+                                )
+                                try:
+                                    eval_reply = provider.generate_reply(
+                                        persona, session.recent_history(),
+                                        eval_prompt, session.affection_score,
+                                        session.mood.current,
+                                    )
+                                    result = parse_evaluator_response(eval_reply.text)
+                                    if result.should_move and result.proposal_line:
+                                        scene_state.pending_proposal = result
+                                        session.add_assistant_message(result.proposal_line)
+                                except Exception:
+                                    pass  # evaluator failure is non-fatal
                     status_line = outcome["status_line"]
                     pending_job = outcome["pending_job"]
                     show_trace = outcome["show_trace"]
@@ -534,6 +626,7 @@ def _handle_key(
             "show_trace": show_trace,
             "voice_output_enabled": voice_output_enabled,
             "quit": False,
+            "sent": True,
         }
 
     if key in {"\x7f", "\b"}:
@@ -588,6 +681,19 @@ def _handle_command(
             "show_trace": show_trace,
             "voice_output_enabled": voice_output_enabled,
             "quit": True,
+        }
+    if lowered == "/move":
+        session.add_system_message(
+            "Use /move in the main loop (handled separately)."
+        )
+        return {
+            "draft": "",
+            "status_line": "Opening scene selector...",
+            "pending_job": pending_job,
+            "show_trace": show_trace,
+            "voice_output_enabled": voice_output_enabled,
+            "quit": False,
+            "move": True,
         }
     if lowered == "/back":
         return {

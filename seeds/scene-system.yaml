@@ -1,0 +1,50 @@
+goal: |
+  Add a Scene System to Girlfriend in CLI that enables LLM-driven
+  location changes during conversation. Every 7 user messages, an
+  evaluator LLM call decides if it's time to move. Transitions show
+  a full-screen report card with affection gauge, highlights, advice,
+  and next scene preview. Scenes are defined in scenes/ JSON files.
+
+constraints:
+  - Python 3.10+
+  - Rich for TUI rendering
+  - OpenAI/Anthropic LLM providers only (no heuristic)
+  - Max 2 extra LLM calls per transition (evaluator + report)
+  - Scene data in scenes/*.json
+  - No breaking changes to existing chat flow
+
+acceptance_criteria:
+  - Evaluator runs every 7 user messages
+  - Evaluator considers affection, mood, current scene, recent messages
+  - Persona proposes scene change naturally in-character
+  - User can accept or reject the proposal
+  - Rejection: different location next time, 3-strike backoff
+  - /move command for manual scene selection with arrow keys
+  - Full-screen Rich report card on transition (4 sections)
+  - Previous scene summarized by LLM for context carry-over
+  - Fresh chat history per scene with summary context
+  - System prompt includes scene mood_hint
+  - Accept: +5 affection, mood.shift(scene.mood_hint)
+  - Reject: -2 affection
+  - At least 6 bundled scenes with min_affection gating
+
+ontology_schema:
+  name: SceneSystem
+  fields:
+    - name: Scene
+      type: dataclass
+      fields: [name, description, mood_hint, bgm_mood, min_affection]
+    - name: SceneState
+      type: dataclass
+      fields: [current_scene, user_msg_count, rejection_count, scene_history]
+    - name: EvaluatorResult
+      type: dataclass
+      fields: [should_move, next_scene, proposal_line]
+    - name: ReportCard
+      type: dataclass
+      fields: [highlights, advice, scene_summary, affection, mood]
+
+metadata:
+  interview_id: interview_20260408_112500
+  ambiguity_score: 0.19
+  version: 1.0.0

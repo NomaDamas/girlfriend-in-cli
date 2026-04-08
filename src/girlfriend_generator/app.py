@@ -140,14 +140,16 @@ class RawKeyboard:
         return data.decode(errors="replace")
 
     def read_line(self, live: Any, prefill: str = "") -> str | None:
-        """Temporarily exit raw mode to use readline for Korean IME support."""
+        """Read a line with Korean IME support, keeping the chat UI visible."""
         self._exit_raw()
-        # Pause Live rendering, show input prompt at bottom of screen
-        live.stop()
+        # Move cursor to the composer area (near bottom) and show prompt
+        # Don't stop Live — keep the chat visible
+        rows = os.get_terminal_size().lines
+        sys.stdout.write(f"\033[?25h")  # show cursor
+        sys.stdout.write(f"\033[{rows - 1};1H")  # move to second-to-last row
+        sys.stdout.write(f"\033[K  \033[1;35m>\033[0m ")  # clear line + prompt
+        sys.stdout.flush()
         try:
-            # Clear the bottom area and show prompt
-            sys.stdout.write(f"\r\033[K  \033[1;35m>\033[0m ")
-            sys.stdout.flush()
             if prefill:
                 try:
                     import readline
@@ -165,9 +167,9 @@ class RawKeyboard:
         except (EOFError, KeyboardInterrupt):
             return None
         finally:
+            sys.stdout.write(f"\033[?25l")  # hide cursor again
+            sys.stdout.flush()
             self._enter_raw()
-            # Restart Live — force full screen redraw
-            live.start(refresh=True)
 
 
 def run_chat_app(config: AppConfig) -> int:

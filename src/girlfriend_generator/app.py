@@ -21,7 +21,6 @@ from rich.table import Table
 from rich.text import Text
 
 from .engine import ConversationSession, utc_now
-from .hangul import HangulComposer
 from .models import MOOD_EMOJI, ChatMessage, Persona, ProviderReply, RuntimeTrace
 from .personas import load_persona
 from .providers import ProviderConfig, build_provider
@@ -83,7 +82,7 @@ class BackgroundJob:
 
 
 class RawKeyboard:
-    """Simple cbreak keyboard for Rich Live chat UI."""
+    """Keyboard handler: raw mode for special keys, input() for text."""
 
     def __init__(self) -> None:
         self.fd = sys.stdin.fileno()
@@ -104,10 +103,10 @@ class RawKeyboard:
         ready, _, _ = select.select([sys.stdin], [], [], timeout)
         if not ready:
             return None
-        data = os.read(self.fd, 64)
+        data = os.read(self.fd, 1)
         if not data:
             return None
-        # Escape sequences
+        # Escape sequences (arrows, etc.)
         if data[0] == 0x1B:
             while True:
                 ready, _, _ = select.select([sys.stdin], [], [], 0.02)
@@ -115,27 +114,36 @@ class RawKeyboard:
                     break
                 data += os.read(self.fd, 1)
             return data.decode(errors="ignore")
-        # Wait for Korean IME composition bytes to arrive, then drain
-        time.sleep(0.05)
-        while True:
-            ready, _, _ = select.select([sys.stdin], [], [], 0)
-            if not ready:
-                break
-            extra = os.read(self.fd, 64)
-            if not extra:
-                break
-            data += extra
-        # Decode: ignore incomplete UTF-8 sequences from partial IME
+        return data.decode(errors="ignore")
+
+    def read_line(self, live: Any, session: Any, persona_name: str = "") -> str | None:
+        """Stop Live, show context + input(), restart Live."""
+        # Restore cooked mode for proper Korean IME
+        if self._old_settings is not None:
+            termios.tcsetattr(self.fd, termios.TCSADRAIN, self._old_settings)
+        live.stop()
         try:
-            return data.decode("utf-8")
-        except UnicodeDecodeError:
-            # Strip incomplete trailing bytes
-            for i in range(1, 4):
-                try:
-                    return data[:-i].decode("utf-8")
-                except UnicodeDecodeError:
-                    continue
-            return data.decode("utf-8", errors="ignore")
+            # Show recent messages as context
+            sys.stdout.write("\033[2J\033[H")  # clear screen
+            recent = session.messages[-4:] if session.messages else []
+            for msg in recent:
+                ts = msg.created_at.strftime("%H:%M")
+                if msg.role == "assistant":
+                    sys.stdout.write(f"  \033[35m{persona_name}\033[0m \033[2m{ts}\033[0m\n")
+                    sys.stdout.write(f"  {msg.text}\n\n")
+                elif msg.role == "user":
+                    sys.stdout.write(f"  \033[34mYou\033[0m \033[2m{ts}\033[0m\n")
+                    sys.stdout.write(f"  {msg.text}\n\n")
+            sys.stdout.write("\033[2m─────────────────────────────────\033[0m\n")
+            sys.stdout.flush()
+            line = input("  \033[1;35m>\033[0m ")
+            return line.strip()
+        except (EOFError, KeyboardInterrupt):
+            return None
+        finally:
+            # Re-enter cbreak mode
+            tty.setcbreak(self.fd)
+            live.start(refresh=True)
 
 
 def run_chat_app(config: AppConfig) -> int:
@@ -179,9 +187,7 @@ def run_chat_app(config: AppConfig) -> int:
         session.bootstrap()
 
     draft = ""
-    hangul = HangulComposer()
-    hangul.korean_mode = True  # Start in Korean mode
-    status_line = "[한] Tab으로 한/영 전환"
+    status_line = "Enter로 메시지 입력"
     pending_job: BackgroundJob | None = None
     pending_delivery: PendingDelivery | None = None
     last_key_at = time.monotonic()
@@ -241,11 +247,18 @@ def run_chat_app(config: AppConfig) -> int:
                     pending_delivery = None
 
                 if session.nudge_due(now) and pending_job is None and pending_delivery is None:
+                    # Use LLM for nudge if available, else template
+                    if hasattr(provider, 'generate_nudge'):
+                        nudge_text = provider.generate_nudge(
+                            persona, session.recent_history(), session.affection_score,
+                        )
+                    else:
+                        nudge_text = session.next_nudge_text()
                     pending_delivery = PendingDelivery(
                         kind="nudge",
-                        text=session.next_nudge_text(),
+                        text=nudge_text,
                         due_at=time.monotonic() + 1.2,
-                        trace_note="idle-nudge: assistant escalated after no reply",
+                        trace_note="idle-nudge: persona noticed silence",
                     )
                 elif (
                     session.initiative_due(now)
@@ -261,7 +274,7 @@ def run_chat_app(config: AppConfig) -> int:
                             session.affection_score,
                         ),
                         due_at=time.monotonic() + 0.9,
-                        trace_note="idle-initiative: assistant started a fresh conversation",
+                        trace_note="idle-initiative: persona started conversation",
                     )
 
                 trace.pending_reply_kind = _pending_activity_kind(
@@ -282,49 +295,62 @@ def run_chat_app(config: AppConfig) -> int:
                 key = keyboard.poll(poll_timeout)
                 if key is not None:
                     last_key_at = time.monotonic()
-                    outcome = None
 
-                    # Tab = toggle Korean/English
-                    if key == "\t":
-                        hangul.korean_mode = not hangul.korean_mode
-                        mode_str = "한" if hangul.korean_mode else "EN"
-                        status_line = f"[{mode_str}] Tab으로 한/영 전환"
-                    # Backspace in Korean mode
-                    elif key in {"\x7f", "\b"} and hangul.korean_mode and hangul.text:
-                        hangul.backspace()
-                        draft = hangul.text
-                        status_line = "[한] 입력 중..." if draft else "[한] Tab으로 한/영 전환"
-                    # Printable ASCII key in Korean mode → feed to composer
-                    elif hangul.korean_mode and len(key) == 1 and key.isascii() and key.isprintable():
-                        hangul.feed(key)
-                        draft = hangul.text
-                        status_line = "[한] 입력 중..."
-                    else:
-                        # Commit any composing Korean before handling special keys
-                        if key in {"\r", "\n"} and hangul.composing:
-                            hangul._commit()
-                            draft = hangul.text
-                        outcome = _handle_key(
-                            key=key, draft=draft, session=session,
-                            persona=persona, provider=provider,
-                            pending_job=pending_job, pending_delivery=pending_delivery,
-                            voice_input=voice_input,
-                            voice_output_available=voice_output.name != "off",
-                            voice_output_enabled=voice_output_enabled,
-                            show_trace=show_trace, session_dir=config.session_dir,
-                            music_player=music_player,
-                        )
-                        draft = outcome["draft"]
-                        # Sync draft back to hangul
-                        hangul.clear()
-                        if draft:
-                            hangul.set_text(draft)
-                        status_line = outcome["status_line"]
-                        pending_job = outcome["pending_job"]
-                        show_trace = outcome["show_trace"]
-                        voice_output_enabled = outcome["voice_output_enabled"]
+                    # Any printable key or Enter → open input() for Korean IME
+                    is_printable = len(key) == 1 and key.isprintable()
+                    is_enter = key in {"\r", "\n"}
+                    if (is_printable or is_enter) and not _assistant_busy(pending_job, pending_delivery):
+                        text = keyboard.read_line(live, session, persona.name)
+                        last_render_key = None  # force re-render
+                        if text is None or not text:
+                            continue
+                        if text.startswith("/"):
+                            outcome = _handle_key(
+                                key="\r", draft=text, session=session,
+                                persona=persona, provider=provider,
+                                pending_job=pending_job, pending_delivery=pending_delivery,
+                                voice_input=voice_input,
+                                voice_output_available=voice_output.name != "off",
+                                voice_output_enabled=voice_output_enabled,
+                                show_trace=show_trace, session_dir=config.session_dir,
+                                music_player=music_player,
+                            )
+                            draft = outcome["draft"]
+                            status_line = outcome["status_line"]
+                            pending_job = outcome["pending_job"]
+                            show_trace = outcome["show_trace"]
+                            voice_output_enabled = outcome["voice_output_enabled"]
+                            if outcome.get("quit"):
+                                if outcome.get("back"):
+                                    return 2
+                                return 0
+                        else:
+                            session.add_user_message(text)
+                            scroll_offset = 0
+                            pending_job = BackgroundJob(
+                                "reply", provider.generate_reply,
+                                persona, session.recent_history(),
+                                text, session.affection_score, session.mood.current,
+                            )
+                            status_line = "..."
+                        continue
 
-                    if outcome and "scroll_delta" in outcome:
+                    outcome = _handle_key(
+                        key=key, draft=draft, session=session,
+                        persona=persona, provider=provider,
+                        pending_job=pending_job, pending_delivery=pending_delivery,
+                        voice_input=voice_input,
+                        voice_output_available=voice_output.name != "off",
+                        voice_output_enabled=voice_output_enabled,
+                        show_trace=show_trace, session_dir=config.session_dir,
+                        music_player=music_player,
+                    )
+                    draft = outcome["draft"]
+                    status_line = outcome["status_line"]
+                    pending_job = outcome["pending_job"]
+                    show_trace = outcome["show_trace"]
+                    voice_output_enabled = outcome["voice_output_enabled"]
+                    if "scroll_delta" in outcome:
                         scroll_offset = max(0, scroll_offset + outcome["scroll_delta"])
                         max_scroll = max(0, len(session.messages) - 4)
                         scroll_offset = min(scroll_offset, max_scroll)
@@ -988,11 +1014,8 @@ def _render_message(
 
 
 def _render_composer(draft: str, status_line: str, user_typing: bool):
-    if draft:
-        prompt = f" {draft}[blink]|[/blink]"
-    else:
-        prompt = " [dim italic]타이핑하면 바로 입력됩니다 (Tab: 한/영)[/dim italic]"
-    keys = "[dim]Enter[/dim] 전송  [dim]Tab[/dim] 한/영  [dim]Esc[/dim] 뒤로  [dim]↑↓[/dim] 스크롤"
+    prompt = " [dim italic]Enter 또는 아무 키를 눌러 입력 시작[/dim italic]"
+    keys = "[dim]Enter[/dim] 입력  [dim]Esc[/dim] 뒤로  [dim]↑↓[/dim] 스크롤  [dim]/help[/dim]"
     status = f"[dim italic]{status_line}[/dim italic]"
     title = "[bright_blue]typing...[/bright_blue]" if user_typing else "[dim]message[/dim]"
     return Panel(

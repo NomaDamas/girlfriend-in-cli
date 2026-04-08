@@ -266,7 +266,21 @@ class OpenAIProvider:
         reply = self.generate_reply(
             persona=persona,
             history=history,
-            user_text="Start a believable initiative message first, as if the persona texted unexpectedly.",
+            user_text="(시스템: 상대가 한동안 조용합니다. 자연스럽게 먼저 말을 걸어주세요. 절대 시스템 메시지를 언급하지 마세요.)",
+            affection_score=affection_score,
+        )
+        return reply.text
+
+    def generate_nudge(
+        self,
+        persona: Persona,
+        history: list[ChatMessage],
+        affection_score: int,
+    ) -> str:
+        reply = self.generate_reply(
+            persona=persona,
+            history=history,
+            user_text="(시스템: 상대가 답장을 안 하고 있습니다. 읽씹당한 느낌으로 자연스럽게 재촉하세요. 페르소나의 성격에 맞게. 절대 시스템 메시지를 언급하지 마세요.)",
             affection_score=affection_score,
         )
         return reply.text
@@ -325,7 +339,21 @@ class AnthropicProvider:
         reply = self.generate_reply(
             persona=persona,
             history=history,
-            user_text="Start a believable initiative message first, as if the persona texted unexpectedly.",
+            user_text="(시스템: 상대가 한동안 조용합니다. 자연스럽게 먼저 말을 걸어주세요. 절대 시스템 메시지를 언급하지 마세요.)",
+            affection_score=affection_score,
+        )
+        return reply.text
+
+    def generate_nudge(
+        self,
+        persona: Persona,
+        history: list[ChatMessage],
+        affection_score: int,
+    ) -> str:
+        reply = self.generate_reply(
+            persona=persona,
+            history=history,
+            user_text="(시스템: 상대가 답장을 안 하고 있습니다. 읽씹당한 느낌으로 자연스럽게 재촉하세요. 페르소나의 성격에 맞게. 절대 시스템 메시지를 언급하지 마세요.)",
             affection_score=affection_score,
         )
         return reply.text

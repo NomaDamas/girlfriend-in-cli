@@ -259,31 +259,19 @@ def _launch_chat(
 
 
 _NERD_FRAMES = [
-    [
-        "  (•_•)   I just want someone",
-        "   <|>    to text me first...",
-        "   / \\",
-    ],
-    [
-        "  (•‿•)   Maybe today",
-        "   \\|/    is the day...",
-        "   / \\",
-    ],
-    [
-        "  (✧ᴗ✧)   Compiling feelings",
-        "   <|> ♡   ...100%!",
-        "   / \\",
-    ],
+    "(•_•)  I just want someone to text me first...",
+    "(•‿•)  Maybe today is the day...",
+    "(✧ᴗ✧) ♡  Compiling feelings... 100%!",
 ]
 
-_LOGO = """
- ╔═╗ ╦ ╦═╗ ╦   ╔═╗ ╦═╗ ╦ ╔═╗ ╔╗╔ ╔╦╗
- ║ ╦ ║ ╠╦╝ ║   ╠╣  ╠╦╝ ║ ║╣  ║║║  ║║
- ╚═╝ ╩ ╩╚═ ╩═╝ ╚   ╩╚═ ╩ ╚═╝ ╝╚╝ ═╩╝
-          ╦ ╔╗╔   ╔═╗ ╦   ╦
-          ║ ║║║   ║   ║   ║
-          ╩ ╝╚╝   ╚═╝ ╩═╝ ╩
-"""
+_LOGO_LINES = [
+    "┏━━━┓ ╻ ┏━━━┓ ╻   ┏━━━┓ ┏━━━┓ ╻ ┏━━━┓ ┏┓╻ ┏━┓",
+    "┃ ┏━┛ ┃ ┣━┳━┛ ┃   ┣━━━┫ ┣━┳━┛ ┃ ┣━━━┫ ┃┗┫ ┃ ┃",
+    "┗━┛   ╹ ╹ ┗━  ┗━━ ╹     ╹ ┗━  ╹ ┗━━━┛ ╹ ╹ ┗━┛",
+    "        ╻ ┏┓╻   ┏━━━┓ ╻   ╻              ",
+    "        ┃ ┃┗┫   ┃     ┃   ┃              ",
+    "        ╹ ╹ ╹   ┗━━━┛ ┗━━ ╹              ",
+]
 
 _MODE_ICONS = {
     "girlfriend": "💕",
@@ -300,23 +288,28 @@ _PERF_ICONS = {
 def _play_intro(console: "Console") -> None:  # type: ignore[name-defined]
     """Play the nerd animation intro."""
     import time
+    from rich.align import Align
     from rich.panel import Panel
     from rich.text import Text
 
-    for frame in _NERD_FRAMES:
+    w = console.size.width
+    for frame_text in _NERD_FRAMES:
         console.clear()
         console.print()
-        for line in frame:
-            console.print(f"  [bright_magenta]{line}[/bright_magenta]")
         console.print()
-        time.sleep(0.6)
+        console.print(Align.center(Text(frame_text, style="bold bright_magenta")))
+        console.print()
+        time.sleep(0.55)
 
-    # Final logo
+    # Final logo reveal
     console.clear()
-    logo = Text(_LOGO)
-    logo.stylize("bold bright_magenta")
-    console.print(Panel(logo, border_style="bright_magenta", padding=(0, 2)))
-    time.sleep(0.4)
+    console.print()
+    for line in _LOGO_LINES:
+        console.print(Align.center(Text(line, style="bold bright_magenta")))
+        time.sleep(0.08)
+    console.print()
+    console.print(Align.center(Text("♡ terminal romance simulator ♡", style="dim italic")))
+    time.sleep(0.5)
 
 
 def _show_main_menu(
@@ -324,7 +317,8 @@ def _show_main_menu(
     args: argparse.Namespace,
     skip_intro: bool = False,
 ) -> tuple[argparse.Namespace, Path, Path | None] | None:
-    from rich.console import Console
+    from rich.align import Align
+    from rich.console import Console, Group
     from rich.panel import Panel
     from rich.text import Text
     from .selector import MenuItem, arrow_select
@@ -337,28 +331,26 @@ def _show_main_menu(
         _play_intro(console)
         console.clear()
 
-    # Logo
-    logo = Text(_LOGO)
-    logo.stylize("bold bright_magenta")
-    console.print(Panel(
-        logo,
-        border_style="bright_magenta",
-        padding=(0, 2),
-        subtitle="[dim italic]terminal romance simulator  |  v0.1.0[/dim italic]",
-    ))
+    # Centered logo block
+    logo_rows = [Text(line, style="bold bright_magenta") for line in _LOGO_LINES]
+    logo_rows.append(Text())
+    logo_rows.append(Text("♡ terminal romance simulator ♡", style="dim italic"))
+    logo_rows.append(Text(f"v0.1.0", style="dim"))
+    logo_group = Group(*[Align.center(r) for r in logo_rows])
+    console.print(Panel(logo_group, border_style="bright_magenta", padding=(1, 1)))
 
-    # Nerd character + settings
+    # Settings bar — centered
     perf_icon = _PERF_ICONS.get(args.performance, "")
     status = Text.assemble(
-        ("  (✧ᴗ✧) ", "bold bright_magenta"),
-        ("  Provider: ", "dim"),
+        ("(✧ᴗ✧) ", "bold bright_magenta"),
+        ("Provider: ", "dim"),
         (args.provider, "bold cyan"),
         ("  │  ", "dim"),
         (f"{perf_icon} {args.performance}", "bold yellow"),
         ("  │  Voice: ", "dim"),
         ("ON" if args.voice_output else "OFF", "bold green" if args.voice_output else "dim"),
     )
-    console.print(status)
+    console.print(Align.center(status))
     console.print()
 
     menu_items = [

@@ -84,42 +84,51 @@ def _build_panel(
     title: str,
     allow_back: bool,
     border_style: str,
-) -> Panel:
+) -> Align:
+    from rich.align import Align
+
     rows = []
     for i, item in enumerate(items):
         selected = i == cursor
         icon = f"{item.icon} " if item.icon else ""
 
         if selected:
+            # Selected: highlighted row with bg
             line = Text()
-            line.append("  ▸ ", style="bold bright_magenta")
-            line.append(f"{icon}{item.label}", style="bold white")
-            if item.description:
-                line.append(f"  {item.description}", style="cyan")
+            line.append(" ▸ ", style="bold bright_magenta")
+            line.append(f"{icon}{item.label} ", style="bold white on grey11")
             rows.append(line)
+            if item.description:
+                desc = Text()
+                desc.append(f"     {item.description}", style="cyan")
+                rows.append(desc)
+            rows.append(Text())  # spacing
         else:
             line = Text()
-            line.append(f"    {icon}{item.label}", style="dim")
+            line.append(f"   {icon}{item.label}", style="dim")
             rows.append(line)
+            rows.append(Text())  # spacing
 
     # Navigation hint
     nav = Text()
-    nav.append("\n  ↑↓ ", style="dim")
+    nav.append("  ↑↓ ", style="dim")
     nav.append("move", style="dim bold")
-    nav.append("   Enter ", style="dim")
+    nav.append("  │  Enter ", style="dim")
     nav.append("select", style="dim bold")
     if allow_back:
-        nav.append("   Esc ", style="dim")
+        nav.append("  │  Esc ", style="dim")
         nav.append("back", style="dim bold")
     rows.append(nav)
 
     body = Group(*rows)
-    return Panel(
+    panel = Panel(
         body,
         title=f"[bold]{title}[/bold]" if title else None,
         border_style=border_style,
-        padding=(1, 2),
+        padding=(1, 3),
+        width=min(60, 60),
     )
+    return Align.center(panel)
 
 
 def _read_key(fd: int) -> str:

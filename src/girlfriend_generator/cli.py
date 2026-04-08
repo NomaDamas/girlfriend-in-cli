@@ -556,23 +556,24 @@ def _edit_persona(console: "Console", persona_path: Path) -> Path | None:  # typ
     console.print(f"\n  [bold]Editing: {name}[/bold]")
     console.print("  [dim]Press Enter to keep current value.[/dim]\n")
 
+    from rich.prompt import Prompt
+
     def _ask(prompt: str, current: str) -> str:
-        display = current[:40] if current else ""
         try:
-            val = input(f"  {prompt} [{display}]: ").strip()
+            val = Prompt.ask(f"  {prompt}", default=current or "", console=console)
+            return val.strip() if val.strip() else current
         except (EOFError, KeyboardInterrupt):
             return current
-        return val if val else current
 
     def _ask_list(prompt: str, current: list[str]) -> list[str]:
         display = ", ".join(current[:3])
         try:
-            val = input(f"  {prompt} [{display}]: ").strip()
+            val = Prompt.ask(f"  {prompt}", default=display, console=console)
+            if not val.strip():
+                return current
+            return [item.strip() for item in val.split(",") if item.strip()]
         except (EOFError, KeyboardInterrupt):
             return current
-        if not val:
-            return current
-        return [item.strip() for item in val.split(",") if item.strip()]
 
     data["name"] = _ask("Name", data.get("name", ""))
     data["background"] = _ask("Background", data.get("background", ""))
@@ -650,21 +651,24 @@ def _create_persona_wizard(console: "Console") -> Path | None:  # type: ignore[n
         padding=(1, 2),
     ))
 
+    from rich.prompt import Prompt
+
     def _ask(prompt: str, default: str = "") -> str:
-        suffix = f" ({default})" if default else ""
         try:
-            val = input(f"  > {prompt}{suffix}: ").strip()
+            val = Prompt.ask(f"  {prompt}", default=default or "", console=console)
+            return val.strip()
         except (EOFError, KeyboardInterrupt):
             return default
-        return val if val else default
 
     def _ask_list(prompt: str, hint: str = "") -> list[str]:
         hint_str = f" ({hint})" if hint else ""
         try:
-            val = input(f"  > {prompt}{hint_str}: ").strip()
+            val = Prompt.ask(f"  {prompt}{hint_str}", default="", console=console)
+            if not val:
+                return []
+            return [item.strip() for item in val.split(",") if item.strip()]
         except (EOFError, KeyboardInterrupt):
             return []
-        return [item.strip() for item in val.split(",") if item.strip()]
 
     console.print("\n  [bold]Basic Info[/bold]")
     console.print("  [dim]─────────────────────────────[/dim]")
@@ -1057,7 +1061,8 @@ def _set_api_key(console: "Console", env_var: str, provider_name: str, prefix: s
     console.print()
 
     try:
-        key = input("  Key: ").strip()
+        from rich.prompt import Prompt
+        key = Prompt.ask("  Key", console=console).strip()
     except (EOFError, KeyboardInterrupt):
         return
 

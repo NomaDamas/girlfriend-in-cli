@@ -142,13 +142,13 @@ class RawKeyboard:
     def read_line(self, live: Any, prefill: str = "") -> str | None:
         """Temporarily exit raw mode to use readline for Korean IME support."""
         self._exit_raw()
+        # Pause Live rendering, show input prompt at bottom of screen
         live.stop()
         try:
-            # Show input prompt with prefilled character
-            sys.stdout.write(f"\r\033[K  \033[1;35m>\033[0m {prefill}")
+            # Clear the bottom area and show prompt
+            sys.stdout.write(f"\r\033[K  \033[1;35m>\033[0m ")
             sys.stdout.flush()
             if prefill:
-                # Use readline with pre-inserted text
                 try:
                     import readline
                     readline.set_startup_hook(lambda: readline.insert_text(prefill))
@@ -166,7 +166,8 @@ class RawKeyboard:
             return None
         finally:
             self._enter_raw()
-            live.start()
+            # Restart Live — force full screen redraw
+            live.start(refresh=True)
 
 
 def run_chat_app(config: AppConfig) -> int:
@@ -319,6 +320,7 @@ def run_chat_app(config: AppConfig) -> int:
                         # Pre-fill with the typed character if printable
                         prefill = key if is_printable else ""
                         text = keyboard.read_line(live, prefill=prefill)
+                        last_render_key = None  # force full re-render after readline
                         if text is None:
                             continue
                         if not text:

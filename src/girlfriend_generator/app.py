@@ -410,26 +410,28 @@ def _handle_key(
     session_dir: Path,
     music_player: Any = None,
 ) -> dict[str, Any]:
-    # Scroll: Page Up = \x1b[5~, Page Down = \x1b[6~, also [ and ] keys
-    if key == "\x1b[5~" or key == "[":
+    # Scroll: arrow keys when draft is empty, also [ and ]
+    is_scroll_up = key in ("\x1b[A", "\x1b[5~", "[")
+    is_scroll_down = key in ("\x1b[B", "\x1b[6~", "]")
+    if is_scroll_up and not draft:
         return {
             "draft": draft,
-            "status_line": "Scrolled up. ] or PgDn to scroll down.",
+            "status_line": "↑ Scrolled up. ↓ to scroll down.",
             "pending_job": pending_job,
             "show_trace": show_trace,
             "voice_output_enabled": voice_output_enabled,
             "quit": False,
-            "scroll_delta": 3,
+            "scroll_delta": 2,
         }
-    if key == "\x1b[6~" or key == "]":
+    if is_scroll_down and not draft:
         return {
             "draft": draft,
-            "status_line": "Scrolled down.",
+            "status_line": "Latest messages.",
             "pending_job": pending_job,
             "show_trace": show_trace,
             "voice_output_enabled": voice_output_enabled,
             "quit": False,
-            "scroll_delta": -3,
+            "scroll_delta": -2,
         }
     if key in {"\x03", "\x04"}:
         return {
@@ -833,11 +835,17 @@ def _render_chat(console: Console, session: ConversationSession, assistant_typin
             accent=session.persona.accent_color,
         ))
     if assistant_typing:
+        # Animated typing dots based on time
+        phase = int(time.monotonic() * 3) % 4
+        dot_styles = [
+            [("●", "bright_white"), ("●", "dim"), ("●", "dim")],
+            [("●", "dim"), ("●", "bright_white"), ("●", "dim")],
+            [("●", "dim"), ("●", "dim"), ("●", "bright_white")],
+            [("●", "dim white"), ("●", "dim white"), ("●", "dim white")],
+        ]
         dots = Text.assemble(
             (f" {session.persona.name}  ", f"bold {session.persona.accent_color}"),
-            ("●", "bright_white"),
-            ("●", "dim white"),
-            ("●", "dim"),
+            *dot_styles[phase],
         )
         blocks.append(Align.left(
             Panel(dots, border_style=session.persona.accent_color, width=min(available_width, 30), padding=(0, 1))
@@ -919,7 +927,7 @@ def _render_composer(draft: str, status_line: str, user_typing: bool):
         prompt = f" {draft}{cursor}"
     else:
         prompt = " [dim italic]메시지를 입력하세요...[/dim italic]"
-    keys = "[dim]Enter[/dim] send  [dim]Esc[/dim] clear  [dim][ ][/dim] scroll  [dim]/help[/dim] cmds"
+    keys = "[dim]Enter[/dim] send  [dim]Esc[/dim] clear  [dim]↑↓[/dim] scroll  [dim]/help[/dim] cmds"
     status = f"[dim italic]{status_line}[/dim italic]"
     title = "[bright_blue]typing...[/bright_blue]" if user_typing else "[dim]message[/dim]"
     return Panel(
@@ -1010,6 +1018,7 @@ def _build_render_key(
         session.mood.current,
         session.mood.intensity,
         scroll_offset,
+        int(time.monotonic() * 3) % 4 if assistant_typing else 0,  # animate dots
     )
 
 

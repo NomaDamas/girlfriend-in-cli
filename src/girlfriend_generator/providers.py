@@ -68,15 +68,17 @@ class HeuristicProvider:
 
     def _typing_seconds(self, persona: Persona, text: str) -> float:
         if self.performance_mode == "turbo":
-            return min(1.05, max(0.18, len(text) / 42.0))
+            # Fast but still feels human: 1-2.5 seconds
+            return min(2.5, max(1.0, len(text) / 20.0))
         if self.performance_mode == "balanced":
             return min(
                 persona.typing.max_seconds,
-                max(persona.typing.min_seconds * 0.75, len(text) / 24.0),
+                max(persona.typing.min_seconds, len(text) / 16.0),
             )
+        # cinematic: slow and dramatic
         return min(
-            persona.typing.max_seconds,
-            max(persona.typing.min_seconds, len(text) / 18.0),
+            persona.typing.max_seconds * 1.2,
+            max(persona.typing.min_seconds * 1.5, len(text) / 10.0),
         )
 
     def _pick_reaction(self, persona: Persona, user_text: str, affection: int) -> str:

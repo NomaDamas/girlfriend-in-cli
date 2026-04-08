@@ -651,17 +651,17 @@ def _create_persona_wizard(console: "Console") -> Path | None:  # type: ignore[n
     ))
 
     def _ask(prompt: str, default: str = "") -> str:
-        suffix = f" [dim]({default})[/dim]" if default else ""
+        suffix = f" ({default})" if default else ""
         try:
-            val = input(f"  \033[1;32m>\033[0m {prompt}{suffix}: ").strip()
+            val = input(f"  > {prompt}{suffix}: ").strip()
         except (EOFError, KeyboardInterrupt):
             return default
         return val if val else default
 
     def _ask_list(prompt: str, hint: str = "") -> list[str]:
-        hint_str = f" [dim]({hint})[/dim]" if hint else ""
+        hint_str = f" ({hint})" if hint else ""
         try:
-            val = input(f"  \033[1;32m>\033[0m {prompt}{hint_str}: ").strip()
+            val = input(f"  > {prompt}{hint_str}: ").strip()
         except (EOFError, KeyboardInterrupt):
             return []
         return [item.strip() for item in val.split(",") if item.strip()]

@@ -331,7 +331,7 @@ _GITHUB_REPO = "NomaDamas/girlfriend-in-cli"
 
 
 def _show_star_popup(console: "Console") -> None:  # type: ignore[name-defined]
-    """Show GitHub star request once, then never again."""
+    """Show GitHub star request. Only stop showing after user says yes."""
     if _STAR_FLAG_PATH.exists():
         return
 
@@ -344,9 +344,10 @@ def _show_star_popup(console: "Console") -> None:  # type: ignore[name-defined]
     body = Text.assemble(
         ("\n", ""),
         ("  (✧ᴗ✧)  ", "bold bright_magenta"),
-        ("이 프로젝트가 마음에 드셨다면\n", "white"),
-        ("         GitHub Star", "bold yellow"),
-        (" 하나가 개발자에게 큰 힘이 됩니다!\n\n", "white"),
+        ("If you enjoy this project,\n", "white"),
+        ("         a GitHub ", "white"),
+        ("Star", "bold yellow"),
+        (" means a lot to the developers!\n\n", "white"),
         (f"         github.com/{_GITHUB_REPO}\n", "dim"),
     )
     console.print(Align.center(Panel(
@@ -358,21 +359,20 @@ def _show_star_popup(console: "Console") -> None:  # type: ignore[name-defined]
     )))
 
     try:
-        answer = input("  Star 누르러 가기? (y/n): ").strip().lower()
+        answer = input("  Open GitHub to star? (y/n): ").strip().lower()
     except (EOFError, KeyboardInterrupt):
         answer = "n"
 
-    if answer in ("y", "yes", "ㅛ"):
+    if answer in ("y", "yes"):
         url = f"https://github.com/{_GITHUB_REPO}"
         try:
             webbrowser.open(url)
-            console.print("  [green]브라우저에서 열렸습니다! 감사합니다![/green]\n")
+            console.print("  [green]Opened in browser. Thank you![/green]\n")
         except Exception:
             console.print(f"  [dim]Open: {url}[/dim]\n")
-
-    # Mark as shown — never show again
-    _STAR_FLAG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    _STAR_FLAG_PATH.write_text("shown", encoding="utf-8")
+        # Only mark as shown when user actually said yes
+        _STAR_FLAG_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _STAR_FLAG_PATH.write_text("shown", encoding="utf-8")
 
 
 def _show_main_menu(
@@ -424,7 +424,7 @@ def _show_main_menu(
     menu_items = [
         MenuItem("New Chat", "Pick a persona and start chatting", icon="💬"),
         MenuItem(f"Chat Rooms ({room_count})", "Continue saved conversations", icon="💌"),
-        MenuItem("Create Persona", "Design your own character from scratch", icon="✨"),
+        MenuItem("Persona Studio", "Create, edit, or delete custom personas", icon="✨"),
         MenuItem("Settings", "Provider, performance, API keys", icon="⚙️"),
         MenuItem("Quit", "See you next time", icon="👋"),
     ]
@@ -458,11 +458,11 @@ def _show_main_menu(
             persona_path, resume_path = room_result
             return args, resolve_persona_path(persona_path), resume_path
 
-        if choice == 2:  # Create Persona
+        if choice == 2:  # Persona Studio
             console.print()
-            created = _create_persona_wizard(console)
-            if created is not None:
-                return args, created, None
+            studio_result = _persona_studio(console, bundled_personas)
+            if studio_result is not None:
+                return args, studio_result, None
             console.clear()
             return _show_main_menu(bundled_personas, args, skip_intro=True)
 
@@ -471,6 +471,161 @@ def _show_main_menu(
             _settings_menu(console, args)
             console.clear()
             return _show_main_menu(bundled_personas, args, skip_intro=True)
+
+
+_BUILTIN_PERSONAS = {"yu-na-girlfriend.json", "han-seo-jin-crush.json", "lee-su-bin-bestfriend.json"}
+
+
+def _persona_studio(
+    console: "Console",  # type: ignore[name-defined]
+    bundled_personas: list[Path],
+) -> Path | None:
+    """Persona studio: create, edit, or delete custom personas."""
+    from .selector import MenuItem, arrow_select
+
+    while True:
+        # Find custom personas
+        persona_dir = bundled_persona_dir()
+        custom_personas = [
+            p for p in bundled_personas
+            if p.name not in _BUILTIN_PERSONAS
+        ]
+
+        items = [
+            MenuItem("Create New", "Build a persona from scratch", icon="✨"),
+        ]
+        for cp in custom_personas:
+            try:
+                data = json.loads(cp.read_text(encoding="utf-8"))
+                name = data.get("name", cp.stem)
+            except Exception:
+                name = cp.stem
+            items.append(MenuItem(f"Edit: {name}", cp.name, icon="✏️"))
+
+        if custom_personas:
+            items.append(MenuItem("Delete a Persona", "Remove a custom persona", icon="🗑️"))
+        items.append(MenuItem("Back", "", icon="←"))
+
+        choice = arrow_select(
+            console, items,
+            title="✨ Persona Studio",
+            border_style="bright_green",
+        )
+
+        if choice is None or choice == len(items) - 1:  # Back
+            return None
+
+        if choice == 0:  # Create
+            return _create_persona_wizard(console)
+
+        if custom_personas and choice == len(items) - 2:  # Delete
+            _delete_persona(console, custom_personas)
+            # Refresh bundled_personas list
+            bundled_personas = discover_personas(persona_dir) if persona_dir.exists() else []
+            continue
+
+        # Edit: choice 1..N maps to custom_personas[choice-1]
+        edit_idx = choice - 1
+        if 0 <= edit_idx < len(custom_personas):
+            result = _edit_persona(console, custom_personas[edit_idx])
+            if result is not None:
+                return result
+            continue
+
+        return None
+
+
+def _edit_persona(console: "Console", persona_path: Path) -> Path | None:  # type: ignore[name-defined]
+    """Edit an existing custom persona's fields."""
+    try:
+        data = json.loads(persona_path.read_text(encoding="utf-8"))
+    except Exception:
+        console.print("  [red]Failed to load persona.[/red]\n")
+        return None
+
+    name = data.get("name", "?")
+    console.print(f"\n  [bold]Editing: {name}[/bold]")
+    console.print("  [dim]Press Enter to keep current value.[/dim]\n")
+
+    def _ask(prompt: str, current: str) -> str:
+        display = current[:40] if current else ""
+        try:
+            val = input(f"  {prompt} [{display}]: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            return current
+        return val if val else current
+
+    def _ask_list(prompt: str, current: list[str]) -> list[str]:
+        display = ", ".join(current[:3])
+        try:
+            val = input(f"  {prompt} [{display}]: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            return current
+        if not val:
+            return current
+        return [item.strip() for item in val.split(",") if item.strip()]
+
+    data["name"] = _ask("Name", data.get("name", ""))
+    data["background"] = _ask("Background", data.get("background", ""))
+    data["situation"] = _ask("Situation", data.get("situation", ""))
+    data["texting_style"] = _ask("Texting style", data.get("texting_style", ""))
+    data["interests"] = _ask_list("Interests (comma)", data.get("interests", []))
+    data["soft_spots"] = _ask_list("Soft spots (comma)", data.get("soft_spots", []))
+    data["boundaries"] = _ask_list("Boundaries (comma)", data.get("boundaries", []))
+    data["greeting"] = _ask("First message", data.get("greeting", ""))
+
+    persona_path.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    console.print(f"\n  [green]Saved: {persona_path.name}[/green]\n")
+
+    # Ask if they want to chat now
+    try:
+        chat = input("  Start chat with this persona? (y/n): ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        return None
+    if chat in ("y", "yes", "ㅛ"):
+        return persona_path
+    return None
+
+
+def _delete_persona(console: "Console", custom_personas: list[Path]) -> None:  # type: ignore[name-defined]
+    from .selector import MenuItem, arrow_select
+
+    items = []
+    for cp in custom_personas:
+        try:
+            data = json.loads(cp.read_text(encoding="utf-8"))
+            name = data.get("name", cp.stem)
+        except Exception:
+            name = cp.stem
+        items.append(MenuItem(name, cp.name, icon="🗑️"))
+    items.append(MenuItem("Cancel", "", icon="←"))
+
+    choice = arrow_select(
+        console, items,
+        title="Delete which persona?",
+        border_style="red",
+    )
+
+    if choice is None or choice == len(items) - 1:
+        return
+
+    target = custom_personas[choice]
+    try:
+        data = json.loads(target.read_text(encoding="utf-8"))
+        name = data.get("name", target.stem)
+    except Exception:
+        name = target.stem
+
+    try:
+        confirm = input(f"  Delete {name}? This cannot be undone. (y/n): ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        return
+    if confirm in ("y", "yes", "ㅛ"):
+        target.unlink()
+        console.print(f"  [red]Deleted: {name}[/red]\n")
 
 
 def _create_persona_wizard(console: "Console") -> Path | None:  # type: ignore[name-defined]

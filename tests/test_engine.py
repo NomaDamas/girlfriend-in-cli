@@ -3,7 +3,14 @@ from pathlib import Path
 
 from girlfriend_generator.engine import ConversationSession, utc_now
 from girlfriend_generator.personas import load_persona
-from girlfriend_generator.providers import HeuristicProvider
+
+
+class _StubProvider:
+    """Minimal provider stub for engine tests."""
+    def generate_initiative(self, persona, history, affection_score):
+        return "hey, you there?"
+    def generate_nudge(self, persona, history, affection_score):
+        return "why no reply?"
 
 
 def test_user_reply_clears_pending_nudge() -> None:
@@ -41,7 +48,7 @@ def test_nudge_due_and_consumed_once() -> None:
 def test_tick_emits_idle_nudge_when_reply_is_overdue() -> None:
     persona = load_persona(Path("personas/han-seo-jin-crush.json"))
     session = ConversationSession(persona=persona)
-    provider = HeuristicProvider()
+    provider = _StubProvider()
     start = utc_now()
     session.bootstrap(now=start)
 
@@ -58,7 +65,7 @@ def test_tick_emits_idle_nudge_when_reply_is_overdue() -> None:
 def test_tick_emits_initiative_when_conversation_is_quiet() -> None:
     persona = load_persona(Path("personas/yu-na-girlfriend.json"))
     session = ConversationSession(persona=persona)
-    provider = HeuristicProvider()
+    provider = _StubProvider()
     start = utc_now()
     session.schedule_initiative(start)
 
@@ -72,19 +79,7 @@ def test_tick_emits_initiative_when_conversation_is_quiet() -> None:
     assert result.trace_note == "tick:initiative"
 
 
-def test_heuristic_provider_respects_typing_range() -> None:
-    persona = load_persona(Path("personas/han-seo-jin-crush.json"))
-    session = ConversationSession(persona=persona)
-    session.bootstrap()
-    provider = HeuristicProvider()
-
-    reply = provider.generate_reply(
-        persona=persona,
-        history=session.recent_history(),
-        user_text="오늘 너한테 뭐라고 보내야 센스 있어 보일까?",
-        affection_score=session.affection_score,
-    )
-
-    assert reply.text
-    assert 0.18 <= reply.typing_seconds <= 1.05
-    assert "turbo-heuristic" in reply.trace_note
+def test_openai_provider_is_default() -> None:
+    from girlfriend_generator.providers import build_provider, ProviderConfig, OpenAIProvider
+    provider = build_provider(ProviderConfig(name="openai"))
+    assert isinstance(provider, OpenAIProvider)

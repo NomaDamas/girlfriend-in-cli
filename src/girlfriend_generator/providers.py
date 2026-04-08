@@ -360,17 +360,14 @@ class AnthropicProvider:
 
 
 def build_provider(config: ProviderConfig):
-    if config.name == "heuristic":
-        return HeuristicProvider(performance_mode=config.performance_mode)
     if config.name == "remote":
         if not config.server_base_url or not config.persona_id:
             raise ValueError("Remote provider requires server_base_url and persona_id.")
         return RemoteProvider(config.server_base_url, config.persona_id)
-    if config.name == "openai":
-        return OpenAIProvider(config.model)
     if config.name == "anthropic":
         return AnthropicProvider(config.model)
-    raise ValueError(f"Unknown provider: {config.name}")
+    # Default: OpenAI
+    return OpenAIProvider(config.model)
 
 
 def _build_system_prompt(persona: Persona, affection_score: int, mood: MoodType = "neutral") -> str:

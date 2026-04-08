@@ -32,7 +32,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--provider",
-        choices=["heuristic", "openai", "anthropic", "remote"],
+        choices=["openai", "anthropic", "remote"],
         default="openai",
         help="Reply generator backend.",
     )
@@ -142,7 +142,7 @@ def build_parser() -> argparse.ArgumentParser:
 def _has_any_flags(args: argparse.Namespace) -> bool:
     return any([
         args.persona,
-        args.provider not in ("heuristic", "openai"),
+        args.provider not in ("openai",),
         args.list_personas,
         args.list_remote_personas,
         getattr(args, "resume", None),
@@ -415,6 +415,15 @@ def _show_main_menu(
         ("ON" if args.voice_output else "OFF", "bold green" if args.voice_output else "dim"),
     )
     console.print(Align.center(status))
+
+    # Check API key
+    import os as _os
+    has_key = bool(_os.environ.get("OPENAI_API_KEY")) or bool(_os.environ.get("ANTHROPIC_API_KEY"))
+    if not has_key:
+        console.print(Align.center(Text(
+            "⚠ API key not set. Go to Settings > API Keys first.",
+            style="bold yellow",
+        )))
     console.print()
 
     # Count chat rooms
@@ -954,7 +963,7 @@ def _settings_menu(console: "Console", args: argparse.Namespace) -> None:  # typ
     import os
     from .selector import MenuItem, arrow_select
 
-    providers = ["heuristic", "openai", "anthropic"]
+    providers = ["openai", "anthropic"]
     perfs = ["turbo", "balanced", "cinematic"]
 
     while True:

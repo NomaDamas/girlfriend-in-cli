@@ -230,13 +230,9 @@ def run_chat_app(config: AppConfig) -> int:
                     pending_delivery = None
 
                 if session.nudge_due(now) and pending_job is None and pending_delivery is None:
-                    # Use LLM for nudge if available, else template
-                    if hasattr(provider, 'generate_nudge'):
-                        nudge_text = provider.generate_nudge(
-                            persona, session.recent_history(), session.affection_score,
-                        )
-                    else:
-                        nudge_text = session.next_nudge_text()
+                    nudge_text = provider.generate_nudge(
+                        persona, session.recent_history(), session.affection_score,
+                    )
                     pending_delivery = PendingDelivery(
                         kind="nudge",
                         text=nudge_text,

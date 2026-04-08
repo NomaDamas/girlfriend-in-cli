@@ -25,7 +25,7 @@ def test_main_passes_resolved_runtime_config_to_app(
             "--persona",
             "personas/han-seo-jin-crush.json",
             "--provider",
-            "heuristic",
+            "openai",
             "--performance",
             "balanced",
             "--voice-output",
@@ -44,7 +44,7 @@ def test_main_passes_resolved_runtime_config_to_app(
     root = project_root()
     assert exit_code == 7
     assert captured["config"].persona_path == root / "personas" / "han-seo-jin-crush.json"
-    assert captured["config"].provider_name == "heuristic"
+    assert captured["config"].provider_name == "openai"
     assert captured["config"].performance_mode == "balanced"
     assert captured["config"].voice_output is True
     assert captured["config"].voice_input_command == "printf hello"

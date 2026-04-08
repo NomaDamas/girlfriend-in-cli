@@ -82,52 +82,39 @@ class BackgroundJob:
 
 
 class RawKeyboard:
-    """Hybrid keyboard: raw mode for special keys, readline for text input."""
+    """Simple cbreak keyboard for Rich Live chat UI."""
 
     def __init__(self) -> None:
         self.fd = sys.stdin.fileno()
         self._old_settings: list[Any] | None = None
-        self._raw = False
 
     def __enter__(self) -> "RawKeyboard":
         if not sys.stdin.isatty():
             raise RuntimeError("Interactive chat requires a TTY.")
         self._old_settings = termios.tcgetattr(self.fd)
-        self._enter_raw()
+        tty.setcbreak(self.fd)
         return self
 
     def __exit__(self, *_: Any) -> None:
         if self._old_settings is not None:
             termios.tcsetattr(self.fd, termios.TCSADRAIN, self._old_settings)
 
-    def _enter_raw(self) -> None:
-        if not self._raw:
-            tty.setcbreak(self.fd)
-            self._raw = True
-
-    def _exit_raw(self) -> None:
-        if self._raw and self._old_settings is not None:
-            termios.tcsetattr(self.fd, termios.TCSADRAIN, self._old_settings)
-            self._raw = False
-
     def poll(self, timeout: float) -> str | None:
-        """Poll for special keys (Esc, arrows, Ctrl+C/D, Enter)."""
-        if not self._raw:
-            self._enter_raw()
         ready, _, _ = select.select([sys.stdin], [], [], timeout)
         if not ready:
             return None
         data = os.read(self.fd, 64)
         if not data:
             return None
-        if data[0:1] == b"\x1b":
+        # Escape sequences
+        if data[0] == 0x1B:
             while True:
-                ready, _, _ = select.select([sys.stdin], [], [], 0)
+                ready, _, _ = select.select([sys.stdin], [], [], 0.02)
                 if not ready:
                     break
                 data += os.read(self.fd, 1)
             return data.decode(errors="ignore")
-        # Drain any additional pending bytes (longer wait for Korean IME)
+        # Wait for Korean IME composition bytes to arrive, then drain
         time.sleep(0.05)
         while True:
             ready, _, _ = select.select([sys.stdin], [], [], 0)
@@ -137,11 +124,17 @@ class RawKeyboard:
             if not extra:
                 break
             data += extra
-        return data.decode(errors="replace")
-
-    def read_line(self, live: Any, prefill: str = "") -> str | None:
-        """Not used — kept for compatibility. Input is now via draft mode."""
-        return prefill or None
+        # Decode: ignore incomplete UTF-8 sequences from partial IME
+        try:
+            return data.decode("utf-8")
+        except UnicodeDecodeError:
+            # Strip incomplete trailing bytes
+            for i in range(1, 4):
+                try:
+                    return data[:-i].decode("utf-8")
+                except UnicodeDecodeError:
+                    continue
+            return data.decode("utf-8", errors="ignore")
 
 
 def run_chat_app(config: AppConfig) -> int:

@@ -103,7 +103,7 @@ class RawKeyboard:
         ready, _, _ = select.select([sys.stdin], [], [], timeout)
         if not ready:
             return None
-        data = os.read(self.fd, 1)
+        data = os.read(self.fd, 64)
         if not data:
             return None
         # Escape sequences (arrows, etc.)
@@ -114,36 +114,37 @@ class RawKeyboard:
                     break
                 data += os.read(self.fd, 1)
             return data.decode(errors="ignore")
-        return data.decode(errors="ignore")
+        # Drain any remaining bytes (multi-byte chars, IME burst)
+        time.sleep(0.02)
+        while True:
+            ready, _, _ = select.select([sys.stdin], [], [], 0)
+            if not ready:
+                break
+            data += os.read(self.fd, 64)
+        # Decode safely — drop incomplete trailing UTF-8
+        try:
+            return data.decode("utf-8")
+        except UnicodeDecodeError:
+            return data.decode("utf-8", errors="ignore") or None
 
     def read_line(self, live: Any, session: Any, persona_name: str = "") -> str | None:
-        """Stop Live, show context + input(), restart Live."""
-        # Restore cooked mode for proper Korean IME
+        """Read a line with Korean IME, keeping chat visible."""
+        # Switch to cooked mode for IME support
         if self._old_settings is not None:
             termios.tcsetattr(self.fd, termios.TCSADRAIN, self._old_settings)
-        live.stop()
+        # Position cursor at bottom of screen, show cursor
+        rows = os.get_terminal_size().lines
+        sys.stdout.write(f"\033[?25h\033[{rows};1H\033[K  \033[1;35m>\033[0m ")
+        sys.stdout.flush()
         try:
-            # Show recent messages as context
-            sys.stdout.write("\033[2J\033[H")  # clear screen
-            recent = session.messages[-4:] if session.messages else []
-            for msg in recent:
-                ts = msg.created_at.strftime("%H:%M")
-                if msg.role == "assistant":
-                    sys.stdout.write(f"  \033[35m{persona_name}\033[0m \033[2m{ts}\033[0m\n")
-                    sys.stdout.write(f"  {msg.text}\n\n")
-                elif msg.role == "user":
-                    sys.stdout.write(f"  \033[34mYou\033[0m \033[2m{ts}\033[0m\n")
-                    sys.stdout.write(f"  {msg.text}\n\n")
-            sys.stdout.write("\033[2m─────────────────────────────────\033[0m\n")
-            sys.stdout.flush()
-            line = input("  \033[1;35m>\033[0m ")
+            line = input()
             return line.strip()
         except (EOFError, KeyboardInterrupt):
             return None
         finally:
-            # Re-enter cbreak mode
+            sys.stdout.write("\033[?25l")  # hide cursor
+            sys.stdout.flush()
             tty.setcbreak(self.fd)
-            live.start(refresh=True)
 
 
 def run_chat_app(config: AppConfig) -> int:

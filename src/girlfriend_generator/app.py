@@ -127,24 +127,6 @@ class RawKeyboard:
         except UnicodeDecodeError:
             return data.decode("utf-8", errors="ignore") or None
 
-    def read_line(self, live: Any, session: Any, persona_name: str = "") -> str | None:
-        """Read a line with Korean IME, keeping chat visible."""
-        # Switch to cooked mode for IME support
-        if self._old_settings is not None:
-            termios.tcsetattr(self.fd, termios.TCSADRAIN, self._old_settings)
-        # Position cursor at bottom of screen, show cursor
-        rows = os.get_terminal_size().lines
-        sys.stdout.write(f"\033[?25h\033[{rows};1H\033[K  \033[1;35m>\033[0m ")
-        sys.stdout.flush()
-        try:
-            line = input()
-            return line.strip()
-        except (EOFError, KeyboardInterrupt):
-            return None
-        finally:
-            sys.stdout.write("\033[?25l")  # hide cursor
-            sys.stdout.flush()
-            tty.setcbreak(self.fd)
 
 
 def run_chat_app(config: AppConfig) -> int:
@@ -296,46 +278,6 @@ def run_chat_app(config: AppConfig) -> int:
                 key = keyboard.poll(poll_timeout)
                 if key is not None:
                     last_key_at = time.monotonic()
-
-                    # Any printable key or Enter → open input() for Korean IME
-                    is_printable = len(key) == 1 and key.isprintable()
-                    is_enter = key in {"\r", "\n"}
-                    if (is_printable or is_enter) and not _assistant_busy(pending_job, pending_delivery):
-                        text = keyboard.read_line(live, session, persona.name)
-                        last_render_key = None  # force re-render
-                        if text is None or not text:
-                            continue
-                        if text.startswith("/"):
-                            outcome = _handle_key(
-                                key="\r", draft=text, session=session,
-                                persona=persona, provider=provider,
-                                pending_job=pending_job, pending_delivery=pending_delivery,
-                                voice_input=voice_input,
-                                voice_output_available=voice_output.name != "off",
-                                voice_output_enabled=voice_output_enabled,
-                                show_trace=show_trace, session_dir=config.session_dir,
-                                music_player=music_player,
-                            )
-                            draft = outcome["draft"]
-                            status_line = outcome["status_line"]
-                            pending_job = outcome["pending_job"]
-                            show_trace = outcome["show_trace"]
-                            voice_output_enabled = outcome["voice_output_enabled"]
-                            if outcome.get("quit"):
-                                if outcome.get("back"):
-                                    return 2
-                                return 0
-                        else:
-                            session.add_user_message(text)
-                            scroll_offset = 0
-                            pending_job = BackgroundJob(
-                                "reply", provider.generate_reply,
-                                persona, session.recent_history(),
-                                text, session.affection_score, session.mood.current,
-                            )
-                            status_line = "..."
-                        continue
-
                     outcome = _handle_key(
                         key=key, draft=draft, session=session,
                         persona=persona, provider=provider,
@@ -347,6 +289,7 @@ def run_chat_app(config: AppConfig) -> int:
                         music_player=music_player,
                     )
                     draft = outcome["draft"]
+                    scroll_offset = 0 if outcome.get("sent") else scroll_offset
                     status_line = outcome["status_line"]
                     pending_job = outcome["pending_job"]
                     show_trace = outcome["show_trace"]
@@ -356,7 +299,7 @@ def run_chat_app(config: AppConfig) -> int:
                         max_scroll = max(0, len(session.messages) - 4)
                         scroll_offset = min(scroll_offset, max_scroll)
                         if scroll_offset == 0:
-                            status_line = "Latest messages."
+                            status_line = ""
                     if outcome and outcome.get("quit"):
                         if outcome.get("back"):
                             return 2  # signal: back to main menu
@@ -1015,8 +958,11 @@ def _render_message(
 
 
 def _render_composer(draft: str, status_line: str, user_typing: bool):
-    prompt = " [dim italic]Enter 또는 아무 키를 눌러 입력 시작[/dim italic]"
-    keys = "[dim]Enter[/dim] 입력  [dim]Esc[/dim] 뒤로  [dim]↑↓[/dim] 스크롤  [dim]/help[/dim]"
+    if draft:
+        prompt = f" {draft}[blink]|[/blink]"
+    else:
+        prompt = " [dim italic]메시지를 입력하세요...[/dim italic]"
+    keys = "[dim]Enter[/dim] 전송  [dim]Esc[/dim] 뒤로  [dim]↑↓[/dim] 스크롤  [dim]/help[/dim]"
     status = f"[dim italic]{status_line}[/dim italic]"
     title = "[bright_blue]typing...[/bright_blue]" if user_typing else "[dim]message[/dim]"
     return Panel(

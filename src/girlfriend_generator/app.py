@@ -142,12 +142,15 @@ class RawKeyboard:
     def read_line(self, live: Any, prefill: str = "") -> str | None:
         """Read a line with Korean IME support, keeping the chat UI visible."""
         self._exit_raw()
-        # Move cursor to the composer area (near bottom) and show prompt
-        # Don't stop Live — keep the chat visible
+        # Force enable echo + canonical mode (cbreak disables both)
+        attrs = termios.tcgetattr(self.fd)
+        attrs[3] |= termios.ECHO | termios.ICANON
+        termios.tcsetattr(self.fd, termios.TCSADRAIN, attrs)
+        # Move cursor to the composer area (near bottom)
         rows = os.get_terminal_size().lines
-        sys.stdout.write(f"\033[?25h")  # show cursor
+        sys.stdout.write("\033[?25h")  # show cursor
         sys.stdout.write(f"\033[{rows - 1};1H")  # move to second-to-last row
-        sys.stdout.write(f"\033[K  \033[1;35m>\033[0m ")  # clear line + prompt
+        sys.stdout.write("\033[K  \033[1;35m>\033[0m ")  # clear line + prompt
         sys.stdout.flush()
         try:
             if prefill:

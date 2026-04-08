@@ -330,7 +330,7 @@ def run_chat_app(config: AppConfig) -> int:
                         scroll_offset = min(scroll_offset, max_scroll)
                         if scroll_offset == 0:
                             status_line = "Latest messages."
-                    if outcome.get("quit"):
+                    if outcome and outcome.get("quit"):
                         if outcome.get("back"):
                             return 2  # signal: back to main menu
                         live.update(

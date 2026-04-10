@@ -443,8 +443,14 @@ def _build_system_prompt(
         "RESPONSE FORMAT — respond with ONLY valid JSON (no markdown, no explanation):\n"
         "{\n"
         '  "reply": "your chat message in Korean",\n'
-        '  "affection_delta": number from -10 to +10 (how their message made you feel. '
-        'Positive = 기분 좋음, negative = 서운/짜증. Be honest based on what they said.),\n'
+        '  "affection_delta": INTEGER — how their message made you feel. Be DRAMATIC, not safe:\n'
+        "       +8 to +15: deeply touched (진심어린 고백, 세심한 배려, 특별한 순간)\n"
+        "       +3 to +7: warm (장난+애정, 관심 표현, 재미있는 대화)\n"
+        "       -1 to -3: mildly annoying (boring 단답, 무심함)\n"
+        "       -5 to -10: hurtful (무례함, 무시, 성의 없음, 비꼬기)\n"
+        "       -15 to -25: DEVASTATING (욕설, 성희롱, 심한 모욕, 관계 폄하, 거짓말)\n"
+        "       Be HONEST and HARSH — real people don't forgive rudeness instantly.\n"
+        "       Extreme rudeness should crash affection dramatically.\n"
         '  "mood": "one of: neutral/happy/playful/sulky/excited/worried/flirty",\n'
         '  "memory_update": "any new important fact you learned about them (or empty string)",\n'
         '  "internal_thought": "your private feeling right now (Korean, 1 sentence)",\n'

@@ -35,8 +35,8 @@ def test_cli_lists_bundled_personas_outside_repository(tmp_path: Path) -> None:
         text=True,
     )
 
-    assert "han-seo-jin-crush.json" in result.stdout
-    assert "yu-na-girlfriend.json" in result.stdout
+    assert "wonyoung-idol.json" in result.stdout
+    assert "dua-international.json" in result.stdout
 
 
 def test_project_root_accepts_valid_environment_override(
@@ -60,11 +60,11 @@ def test_resolve_persona_path_finds_repo_relative_persona_from_outside_repo(
     original_cwd = Path.cwd()
     try:
         os.chdir(tmp_path)
-        resolved = resolve_persona_path(Path("personas/han-seo-jin-crush.json"))
+        resolved = resolve_persona_path(Path("personas/wonyoung-idol.json"))
     finally:
         os.chdir(original_cwd)
 
-    assert resolved == root / "personas" / "han-seo-jin-crush.json"
+    assert resolved == root / "personas" / "wonyoung-idol.json"
 
 
 def test_resolve_session_dir_keeps_relative_exports_under_project_root() -> None:

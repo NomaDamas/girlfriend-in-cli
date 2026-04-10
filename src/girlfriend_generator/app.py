@@ -500,7 +500,7 @@ def _finish_job(
         import random
         seen_delay = random.uniform(1.0, 2.5)
         now = time.monotonic()
-        trace_extra = f" | thought: {internal_thought}" if internal_thought else ""
+        trace_extra = f" | thought: {reply.internal_thought}" if reply.internal_thought else ""
         delivery = PendingDelivery(
             kind="reply",
             text=actual_text,

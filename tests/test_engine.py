@@ -14,7 +14,7 @@ class _StubProvider:
 
 
 def test_user_reply_clears_pending_nudge() -> None:
-    persona = load_persona(Path("personas/yu-na-girlfriend.json"))
+    persona = load_persona(Path("personas/dua-international.json"))
     session = ConversationSession(persona=persona)
     start = utc_now()
     session.bootstrap(now=start)
@@ -30,7 +30,7 @@ def test_user_reply_clears_pending_nudge() -> None:
 
 
 def test_nudge_due_and_consumed_once() -> None:
-    persona = load_persona(Path("personas/han-seo-jin-crush.json"))
+    persona = load_persona(Path("personas/wonyoung-idol.json"))
     session = ConversationSession(persona=persona)
     start = utc_now()
     session.bootstrap(now=start)
@@ -46,7 +46,7 @@ def test_nudge_due_and_consumed_once() -> None:
 
 
 def test_tick_emits_idle_nudge_when_reply_is_overdue() -> None:
-    persona = load_persona(Path("personas/han-seo-jin-crush.json"))
+    persona = load_persona(Path("personas/wonyoung-idol.json"))
     session = ConversationSession(persona=persona)
     provider = _StubProvider()
     start = utc_now()
@@ -63,7 +63,7 @@ def test_tick_emits_idle_nudge_when_reply_is_overdue() -> None:
 
 
 def test_tick_emits_initiative_when_conversation_is_quiet() -> None:
-    persona = load_persona(Path("personas/yu-na-girlfriend.json"))
+    persona = load_persona(Path("personas/dua-international.json"))
     session = ConversationSession(persona=persona)
     provider = _StubProvider()
     start = utc_now()

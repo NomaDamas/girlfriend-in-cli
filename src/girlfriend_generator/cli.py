@@ -483,9 +483,6 @@ def _show_main_menu(
 
 
 _BUILTIN_PERSONAS = {
-    "yu-na-girlfriend.json",
-    "han-seo-jin-crush.json",
-    "lee-su-bin-bestfriend.json",
     "wonyoung-idol.json",
     "dua-international.json",
     "reze-anime.json",
@@ -567,12 +564,13 @@ def _auto_generate_persona(console: "Console") -> Path | None:  # type: ignore[n
 
     console.print(Panel(
         "[bold bright_green]🤖 Auto Persona Generator[/bold bright_green]\n\n"
-        "[dim]Enter anything — celebrity name, character name, profile URL, or description.[/dim]\n"
+        "[dim]Enter a name, URL, or description.[/dim]\n"
+        "[dim]The system will web-search and generate a persona automatically.[/dim]\n\n"
         "[dim]Examples:[/dim]\n"
         "  [cyan]장원영[/cyan]\n"
         "  [cyan]Dua Lipa[/cyan]\n"
         "  [cyan]Reze from Chainsaw Man[/cyan]\n"
-        "  [cyan]https://instagram.com/some_account[/cyan]\n"
+        "  [cyan]https://namu.wiki/w/아이유[/cyan]\n"
         "  [cyan]차가운 도시 여자 26살 변호사[/cyan]",
         border_style="bright_green",
         width=70,
@@ -588,8 +586,8 @@ def _auto_generate_persona(console: "Console") -> Path | None:  # type: ignore[n
     if not input_text.strip():
         return None
 
-    console.print(f"\n  [dim]🤖 Generating persona from '{input_text}'...[/dim]")
-    console.print("  [dim]This may take 5-10 seconds...[/dim]\n")
+    console.print(f"\n  [dim]🤖 Researching '{input_text}' on the web...[/dim]")
+    console.print("  [dim]This may take 10-20 seconds...[/dim]\n")
 
     try:
         data = generate_persona_from_input(input_text.strip())

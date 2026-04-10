@@ -23,7 +23,7 @@ def test_main_passes_resolved_runtime_config_to_app(
         [
             "girlfriend-generator",
             "--persona",
-            "personas/han-seo-jin-crush.json",
+            "personas/wonyoung-idol.json",
             "--provider",
             "openai",
             "--performance",
@@ -43,7 +43,7 @@ def test_main_passes_resolved_runtime_config_to_app(
 
     root = project_root()
     assert exit_code == 7
-    assert captured["config"].persona_path == root / "personas" / "han-seo-jin-crush.json"
+    assert captured["config"].persona_path == root / "personas" / "wonyoung-idol.json"
     assert captured["config"].provider_name == "openai"
     assert captured["config"].performance_mode == "balanced"
     assert captured["config"].voice_output is True
@@ -94,5 +94,5 @@ def test_list_personas_prints_bundled_personas_without_launching_app(
 
     output = capsys.readouterr().out
     assert exit_code == 0
-    assert "han-seo-jin-crush.json" in output
-    assert "yu-na-girlfriend.json" in output
+    assert "wonyoung-idol.json" in output
+    assert "dua-international.json" in output

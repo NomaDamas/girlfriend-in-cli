@@ -6,12 +6,12 @@ from girlfriend_generator.personas import discover_personas, load_persona
 def test_discover_personas_lists_bundled_files() -> None:
     persona_paths = discover_personas(Path("personas"))
     names = [path.name for path in persona_paths]
-    assert "han-seo-jin-crush.json" in names
-    assert "yu-na-girlfriend.json" in names
+    assert "wonyoung-idol.json" in names
+    assert "dua-international.json" in names
 
 
 def test_load_persona_validates_adult_and_nudges() -> None:
-    persona = load_persona(Path("personas/han-seo-jin-crush.json"))
+    persona = load_persona(Path("personas/wonyoung-idol.json"))
     assert persona.age >= 20
     assert persona.relationship_mode == "crush"
     assert persona.nudge_policy.templates

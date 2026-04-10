@@ -20,7 +20,7 @@ from girlfriend_generator.voice import DisabledVoiceInput, VoiceInputAdapter
 
 
 def _load_test_persona():
-    return load_persona(Path("personas/han-seo-jin-crush.json"))
+    return load_persona(Path("personas/wonyoung-idol.json"))
 
 
 def _render_to_text(renderable) -> str:
@@ -152,7 +152,7 @@ def test_render_screen_shows_typing_and_trace_visibility() -> None:
     session = ConversationSession(persona=persona)
     session.bootstrap()
     trace = RuntimeTrace(
-        persona_path=Path("personas/han-seo-jin-crush.json"),
+        persona_path=Path("personas/wonyoung-idol.json"),
         provider_name="heuristic",
         provider_model=None,
         performance_mode="turbo",
@@ -186,7 +186,7 @@ def test_render_trace_shows_idle_timers() -> None:
     session = ConversationSession(persona=persona)
     session.bootstrap()
     trace = RuntimeTrace(
-        persona_path=Path("personas/han-seo-jin-crush.json"),
+        persona_path=Path("personas/wonyoung-idol.json"),
         provider_name="heuristic",
         provider_model=None,
         performance_mode="turbo",
@@ -206,7 +206,7 @@ def test_render_trace_shows_idle_timers() -> None:
 
 def test_sync_provider_trace_exposes_remote_metadata() -> None:
     trace = RuntimeTrace(
-        persona_path=Path("personas/han-seo-jin-crush.json"),
+        persona_path=Path("personas/wonyoung-idol.json"),
         provider_name="remote",
         provider_model=None,
         performance_mode="turbo",
@@ -378,7 +378,7 @@ def test_run_chat_app_returns_clean_error_without_tty(
 
     exit_code = run_chat_app(
         AppConfig(
-            persona_path=Path("personas/han-seo-jin-crush.json"),
+            persona_path=Path("personas/wonyoung-idol.json"),
             session_dir=tmp_path,
         )
     )

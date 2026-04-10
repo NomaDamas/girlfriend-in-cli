@@ -63,8 +63,66 @@ Rules:
 """
 
 
+def _looks_like_url(text: str) -> bool:
+    return text.startswith("http://") or text.startswith("https://") or "://" in text
+
+
+def _fetch_url_content(url: str) -> str:
+    """Fetch and extract text from a URL (best effort)."""
+    try:
+        from urllib import request
+        from urllib.parse import urlparse
+        import re
+
+        parsed = urlparse(url)
+        if not parsed.scheme or not parsed.netloc:
+            return ""
+
+        req = request.Request(
+            url,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36"
+            },
+        )
+        with request.urlopen(req, timeout=10) as resp:
+            raw = resp.read().decode("utf-8", errors="ignore")
+
+        # Strip HTML tags crudely
+        text = re.sub(r"<script[^>]*>.*?</script>", "", raw, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r"<style[^>]*>.*?</style>", "", text, flags=re.DOTALL | re.IGNORECASE)
+        text = re.sub(r"<[^>]+>", " ", text)
+        text = re.sub(r"\s+", " ", text)
+        return text[:8000]
+    except Exception:
+        return ""
+
+
+def _web_search_context(query: str) -> str:
+    """Use OpenAI web_search tool to gather context about the query."""
+    try:
+        from openai import OpenAI
+    except ImportError:
+        return ""
+
+    try:
+        client = OpenAI()
+        response = client.responses.create(
+            model="gpt-4.1-mini",
+            tools=[{"type": "web_search"}],
+            input=f"Search for information about: {query}\n\n"
+            f"Summarize their personality, background, interests, style, "
+            f"notable quotes, and characteristic traits. Korean or English OK. "
+            f"Be concrete and specific. Max 600 words.",
+        )
+        return response.output_text.strip()[:4000]
+    except Exception:
+        return ""
+
+
 def generate_persona_from_input(input_text: str, model: str = "gpt-4.1-mini") -> dict[str, Any]:
-    """Call LLM to generate persona JSON from a name, URL, or description."""
+    """Call LLM to generate persona JSON from a name, URL, or description.
+    If input is a URL, fetch page content. Otherwise, use web_search tool."""
     if not os.getenv("OPENAI_API_KEY"):
         raise RuntimeError("OPENAI_API_KEY is not set. Set it in Settings > API Keys.")
 
@@ -73,8 +131,26 @@ def generate_persona_from_input(input_text: str, model: str = "gpt-4.1-mini") ->
     except ImportError as exc:
         raise RuntimeError("Install openai package.") from exc
 
+    # Gather research context
+    research_context = ""
+    if _looks_like_url(input_text):
+        research_context = _fetch_url_content(input_text)
+        if not research_context:
+            research_context = _web_search_context(input_text)
+    else:
+        # Name or description — use web search
+        research_context = _web_search_context(input_text)
+
+    full_input = input_text
+    if research_context:
+        full_input = (
+            f"{input_text}\n\n"
+            f"=== Research context (use this to ground the persona) ===\n"
+            f"{research_context}"
+        )
+
     client = OpenAI()
-    prompt = _AUTO_PERSONA_PROMPT.format(input_text=input_text)
+    prompt = _AUTO_PERSONA_PROMPT.format(input_text=full_input)
 
     response = client.responses.create(
         model=model,

@@ -749,7 +749,8 @@ def _handle_key(
                 mins = int(gap / 60)
                 time_since = f"{mins}분" if mins < 60 else f"{mins // 60}시간 {mins % 60}분"
         memory = "; ".join(session.memory_notes[-5:])
-        lang = getattr(session, "language", "ko")
+        from .i18n import get_language
+        lang = get_language()
         job = BackgroundJob(
             "reply",
             lambda: provider.generate_reply(

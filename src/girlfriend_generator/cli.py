@@ -430,18 +430,21 @@ def _show_main_menu(
     session_dir = bundled_session_dir()
     room_count = len(list(session_dir.glob("*.json"))) if session_dir.exists() else 0
 
+    from .i18n import t, get_language
+    lang = get_language()
+
     menu_items = [
-        MenuItem("New Chat", "Pick a persona and start chatting", icon="💬"),
-        MenuItem(f"Chat Rooms ({room_count})", "Continue saved conversations", icon="💌"),
-        MenuItem("Persona Studio", "Create, edit, or delete custom personas", icon="✨"),
-        MenuItem("Settings", "Provider, performance, API keys", icon="⚙️"),
-        MenuItem("Quit", "See you next time", icon="👋"),
+        MenuItem(t("new_chat", lang), t("new_chat_desc", lang), icon="💬"),
+        MenuItem(f"{t('chat_rooms', lang)} ({room_count})", t("chat_rooms_desc", lang), icon="💌"),
+        MenuItem(t("persona_studio", lang), t("persona_studio_desc", lang), icon="✨"),
+        MenuItem(t("settings", lang), t("settings_desc", lang), icon="⚙️"),
+        MenuItem(t("quit", lang), t("quit_desc", lang), icon="👋"),
     ]
 
     while True:
         choice = arrow_select(
             console, menu_items,
-            title="♡ What would you like to do?",
+            title=t("main_title", lang),
             allow_back=False,
             border_style="bright_magenta",
         )
@@ -1046,17 +1049,22 @@ def _find_persona_by_name(name: str, personas: list[Path]) -> Path | None:
 def _settings_menu(console: "Console", args: argparse.Namespace) -> None:  # type: ignore[name-defined]
     import os
     from .selector import MenuItem, arrow_select
+    from .i18n import get_language, set_language
 
     providers = ["openai", "anthropic"]
     perfs = ["turbo", "balanced", "cinematic"]
+    languages = ["ko", "en", "ja", "zh"]
+    lang_names = {"ko": "한국어", "en": "English", "ja": "日本語", "zh": "中文"}
 
     while True:
         perf_icon = _PERF_ICONS.get(args.performance, "")
         has_openai = bool(os.environ.get("OPENAI_API_KEY"))
         has_anthropic = bool(os.environ.get("ANTHROPIC_API_KEY"))
+        current_lang = get_language()
 
         items = [
-            MenuItem(f"Provider: {args.provider}", "Cycle between heuristic / openai / anthropic", icon="🔌"),
+            MenuItem(f"Language: {lang_names.get(current_lang, current_lang)}", "UI + chat language", icon="🌍"),
+            MenuItem(f"Provider: {args.provider}", "Cycle openai / anthropic", icon="🔌"),
             MenuItem(f"Performance: {perf_icon} {args.performance}", "Cycle turbo / balanced / cinematic", icon="⚡"),
             MenuItem(f"Voice: {'ON' if args.voice_output else 'OFF'}", "Toggle voice output", icon="🔊"),
             MenuItem(f"Trace: {'ON' if not args.no_trace else 'OFF'}", "Toggle debug trace panel", icon="📊"),
@@ -1071,21 +1079,26 @@ def _settings_menu(console: "Console", args: argparse.Namespace) -> None:  # typ
         if choice is None:
             return
 
-        if choice == 0:  # Provider
+        if choice == 0:  # Language
+            idx = languages.index(current_lang) if current_lang in languages else 0
+            new_lang = languages[(idx + 1) % len(languages)]
+            set_language(new_lang)
+            console.print(f"  [green]Language -> {lang_names[new_lang]}[/green]\n")
+        elif choice == 1:  # Provider
             current_idx = providers.index(args.provider) if args.provider in providers else 0
             args.provider = providers[(current_idx + 1) % len(providers)]
             console.print(f"  [green]Provider -> {args.provider}[/green]\n")
-        elif choice == 1:  # Performance
+        elif choice == 2:  # Performance
             current_idx = perfs.index(args.performance) if args.performance in perfs else 0
             args.performance = perfs[(current_idx + 1) % len(perfs)]
             console.print(f"  [green]Performance -> {args.performance}[/green]\n")
-        elif choice == 2:  # Voice
+        elif choice == 3:  # Voice
             args.voice_output = not args.voice_output
             console.print(f"  [green]Voice -> {'ON' if args.voice_output else 'OFF'}[/green]\n")
-        elif choice == 3:  # Trace
+        elif choice == 4:  # Trace
             args.no_trace = not args.no_trace
             console.print(f"  [green]Trace -> {'ON' if not args.no_trace else 'OFF'}[/green]\n")
-        elif choice == 4:  # API Keys
+        elif choice == 5:  # API Keys
             _api_key_guide(console)
 
 

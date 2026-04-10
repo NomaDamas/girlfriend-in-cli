@@ -8,7 +8,7 @@ import termios
 import threading
 import time
 import tty
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
@@ -60,6 +60,8 @@ class PendingDelivery:
     due_at: float
     trace_note: str
     typing_starts_at: float | None = None  # when to show "typing..." indicator
+    burst_queue: list[str] = field(default_factory=list)  # follow-up burst messages
+    propose_scene: str = ""  # LLM-proposed scene change
 
 
 class BackgroundJob:
@@ -238,7 +240,31 @@ def run_chat_app(config: AppConfig) -> int:
                     status_line = pending_delivery.trace_note
                     if voice_output_enabled:
                         voice_output.speak(delivered_text)
-                    pending_delivery = None
+                    # Handle burst follow-ups: queue them as additional deliveries
+                    if pending_delivery.burst_queue:
+                        next_text = pending_delivery.burst_queue[0]
+                        remaining = pending_delivery.burst_queue[1:]
+                        seen_delay = 0.6
+                        pending_delivery = PendingDelivery(
+                            kind="reply",
+                            text=next_text,
+                            due_at=time.monotonic() + seen_delay + len(next_text) / 20.0,
+                            typing_starts_at=time.monotonic() + seen_delay,
+                            trace_note="burst follow-up",
+                            burst_queue=remaining,
+                        )
+                    else:
+                        pending_delivery = None
+
+                # Check for game over / success ending
+                if session.affection_score <= 0 and not getattr(session, "_ended", False):
+                    session._ended = True
+                    _show_ending(live, console, persona, session, "game_over", provider)
+                    return 0
+                if session.affection_score >= 100 and not getattr(session, "_ended", False):
+                    session._ended = True
+                    _show_ending(live, console, persona, session, "success", provider)
+                    return 0
 
                 if session.nudge_due(now) and pending_job is None and pending_delivery is None:
                     nudge_text = provider.generate_nudge(
@@ -449,6 +475,101 @@ def run_chat_app(config: AppConfig) -> int:
             )
 
 
+def _show_ending(
+    live: Any,
+    console: Console,
+    persona: Persona,
+    session: ConversationSession,
+    kind: str,
+    provider: Any,
+) -> None:
+    """Show full-screen game over or success ending with LLM-generated report."""
+    from rich.align import Align
+    from rich.panel import Panel
+    from rich.text import Text
+
+    # Ask LLM for ending narrative + report
+    ending_prompt = (
+        f"The simulation has reached {'GAME OVER (affection 0)' if kind == 'game_over' else 'SUCCESS (affection 100)'}. "
+        f"You are {persona.name}. Generate an ending scene and a report. "
+        "Respond with ONLY valid JSON:\n"
+        "{\n"
+        '  "ending_narrative": "2-3 sentences in the user language describing how the relationship ended (dramatic, emotional)",\n'
+        '  "persona_final_words": "the last message the persona sends (in-character, 1-2 sentences)",\n'
+        '  "report_title": "a dramatic title for the ending (like 차가운 작별, 해피엔딩, 완전한 사랑)",\n'
+        '  "highlights": ["key moment 1", "key moment 2", "key moment 3"],\n'
+        '  "what_went_wrong": "what the user did right or wrong (1-2 sentences)",\n'
+        '  "rating": "S/A/B/C/D/F grade on their performance"\n'
+        "}"
+    )
+    try:
+        ending_reply = provider.generate_reply(
+            persona, session.recent_history(), ending_prompt,
+            session.affection_score, session.mood.current,
+            difficulty=persona.difficulty,
+            language=getattr(session, "language", "ko"),
+        )
+        import json as _json
+        raw = ending_reply.text
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[1].rsplit("```", 1)[0]
+        data = _json.loads(raw)
+    except Exception:
+        data = {
+            "ending_narrative": "The story has ended.",
+            "persona_final_words": "...",
+            "report_title": "GAME OVER" if kind == "game_over" else "SUCCESS",
+            "highlights": [],
+            "what_went_wrong": "",
+            "rating": "?",
+        }
+
+    live.stop()
+    console.clear()
+
+    color = "red" if kind == "game_over" else "bright_green"
+    title = data.get("report_title", "END")
+    rating = data.get("rating", "?")
+
+    body = Text.assemble(
+        ("\n", ""),
+        (f"  {data.get('persona_final_words', '')}\n\n", "italic white"),
+        ("  ──────────────────────────────\n\n", "dim"),
+        (f"  {data.get('ending_narrative', '')}\n\n", "white"),
+        ("  ──────────────────────────────\n\n", "dim"),
+        ("  Highlights:\n", "bold"),
+    )
+    lines = [body]
+    for h in data.get("highlights", []):
+        lines.append(Text(f"    • {h}\n", style="cyan"))
+    lines.append(Text.assemble(
+        ("\n  ", ""),
+        ("Review:  ", "bold"),
+        (f"{data.get('what_went_wrong', '')}\n\n", "yellow"),
+        ("  Grade:  ", "bold"),
+        (f"{rating}\n\n", f"bold {color}"),
+        ("  Final Affection:  ", "bold"),
+        (f"{session.affection_score}/100\n", f"bold {color}"),
+    ))
+
+    from rich.console import Group as RichGroup
+    panel_body = RichGroup(*lines)
+    console.print()
+    console.print(Align.center(Panel(
+        panel_body,
+        title=f"[bold {color}]━━ {title} ━━[/bold {color}]",
+        border_style=color,
+        width=80,
+        padding=(1, 2),
+    )))
+    console.print()
+    console.print(Align.center(Text("Press Enter to return to main menu", style="dim")))
+    try:
+        input()
+    except (EOFError, KeyboardInterrupt):
+        pass
+
+
 def _finish_job(
     session: ConversationSession,
     persona: Persona,
@@ -507,6 +628,8 @@ def _finish_job(
             due_at=now + seen_delay + reply.typing_seconds,
             typing_starts_at=now + seen_delay,
             trace_note=reply.trace_note + trace_extra,
+            burst_queue=reply.burst_messages if reply.should_burst else [],
+            propose_scene=reply.propose_scene,
         )
         return None, delivery, reply.trace_note
 
@@ -626,6 +749,7 @@ def _handle_key(
                 mins = int(gap / 60)
                 time_since = f"{mins}분" if mins < 60 else f"{mins // 60}시간 {mins % 60}분"
         memory = "; ".join(session.memory_notes[-5:])
+        lang = getattr(session, "language", "ko")
         job = BackgroundJob(
             "reply",
             lambda: provider.generate_reply(
@@ -633,6 +757,9 @@ def _handle_key(
                 session.affection_score, mood,
                 current_time=now_str, time_since_last=time_since,
                 memory=memory,
+                difficulty=persona.difficulty,
+                language=lang,
+                special_mode=persona.special_mode,
             ),
         )
         return {

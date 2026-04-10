@@ -264,6 +264,13 @@ class OpenAIProvider:
             delta = int(parsed.get("affection_delta", 0))
         except (ValueError, TypeError):
             delta = 0
+        try:
+            proactive = parsed.get("next_proactive_seconds")
+            proactive_s = int(proactive) if proactive is not None else None
+        except (ValueError, TypeError):
+            proactive_s = None
+        burst_raw = parsed.get("burst_messages", [])
+        burst_list = [str(m) for m in burst_raw] if isinstance(burst_raw, list) else []
         return ProviderReply(
             text=clean_text,
             typing_seconds=min(
@@ -276,6 +283,10 @@ class OpenAIProvider:
             memory_update=str(parsed.get("memory_update", "")),
             internal_thought=str(parsed.get("internal_thought", "")),
             coach_feedback=str(parsed.get("user_feedback", "")),
+            should_burst=bool(parsed.get("should_burst", False)),
+            burst_messages=burst_list,
+            next_proactive_seconds=proactive_s,
+            propose_scene=str(parsed.get("propose_scene") or ""),
         )
 
     def generate_initiative(
@@ -411,6 +422,9 @@ def _build_system_prompt(
     scene_name: str = "",
     scene_desc: str = "",
     memory: str = "",
+    difficulty: str = "normal",
+    language: str = "ko",
+    special_mode: str = "",
 ) -> str:
     time_ctx = ""
     if current_time:
@@ -459,9 +473,14 @@ def _build_system_prompt(
         "'아 답장 좀 ㅠ', '뭐야 자?', '나 혼자 떠들게 하지마 ㅡㅡ'.\n\n"
         "절대 '긴 문장', '공손함', '완벽한 조언자 말투' 금지. 너는 진짜 사람이야.\n"
         "절대 성적 내용 금지.\n\n"
-        "RESPONSE FORMAT — respond with ONLY valid JSON (no markdown, no explanation):\n"
+        f"\n=== DIFFICULTY: {difficulty} ===\n"
+        + _difficulty_instructions(difficulty) +
+        f"\n=== LANGUAGE: {language} ===\n"
+        + _language_instructions(language) +
+        (f"\n=== SPECIAL MODE: {special_mode} ===\n" + _special_mode_instructions(special_mode) if special_mode else "") +
+        "\nRESPONSE FORMAT — respond with ONLY valid JSON (no markdown, no explanation):\n"
         "{\n"
-        '  "reply": "your chat message in Korean",\n'
+        '  "reply": "your chat message in the target language",\n'
         '  "affection_delta": INTEGER — how their message made you feel. BE DRAMATIC:\n'
         "       +8 to +15: deeply touched (진심어린 고백, 세심한 배려, 특별한 순간)\n"
         "       +3 to +7: warm (장난+애정, 관심 표현, 재미있는 대화)\n"
@@ -486,7 +505,16 @@ def _build_system_prompt(
         "(3) WHY it works emotionally. "
         "NO generic advice like 좀더 적극적으로. Be SPECIFIC. Reference their exact words. "
         "Example: '뭐해? 는 성의 제로. 대신 「어제 말한 그 프로젝트 잘 됐어?」처럼 기억한다는 걸 보여줘. "
-        ' 상대는 기억해주는 사람한테 빠져. (Korean, 2-3 sentences)"\n'
+        ' 상대는 기억해주는 사람한테 빠져. (Korean, 2-3 sentences)",\n'
+        '  "should_burst": boolean — true if your personality would spam multiple rapid messages '
+        "(e.g. yandere obsession, excited rambling, drunk texting). Only true for high-emotion states.,\n"
+        '  "burst_messages": ["follow-up 1", "follow-up 2"] — array of 1-4 extra messages to send '
+        "right after the main reply, IF should_burst is true. Otherwise empty array [].,\n"
+        '  "next_proactive_seconds": integer OR null — if you want to proactively send ANOTHER '
+        "message later without waiting for user (e.g. '아 맞다 한 가지 더', '나 방금 이거 생각났어'), "
+        "set to 30-600. null = wait for user response normally.,\n"
+        '  "propose_scene": string OR null — if you naturally want to suggest changing location/'
+        "situation (like '우리 카페 갈래?' or '한강 산책할래?'), put the proposed place. null otherwise.\n"
         "}\n\n"
         f"Your identity: {persona.name}, {persona.age}세, {persona.relationship_mode}.\n"
         f"Background: {persona.background}\n"
@@ -498,6 +526,58 @@ def _build_system_prompt(
         f"Signature phrases: {', '.join(persona.style_profile.signature_phrases) or 'None'}.\n"
         f"{persona.provider_system_hint or ''}"
     )
+
+
+def _difficulty_instructions(difficulty: str) -> str:
+    if difficulty == "easy":
+        return (
+            "You are EASY mode: warm, forgiving, easily impressed. Small gestures earn +5 to +10. "
+            "Mistakes only cost -1 to -3. You want this to work out.\n"
+        )
+    if difficulty == "hard":
+        return (
+            "You are HARD mode: picky, guarded, HARD TO IMPRESS. You've been hurt before and "
+            "don't trust easily. Generic compliments = 0 or even -2. Only genuine, specific, "
+            "thoughtful gestures earn +3 to +5. Boring messages = -3 to -5. "
+            "You make them WORK for your affection. Don't be rude, just unimpressed.\n"
+        )
+    if difficulty == "nightmare":
+        return (
+            "You are NIGHTMARE mode: emotionally unavailable, sarcastic, cynical. Most of what "
+            "they say annoys you slightly. Only TRULY exceptional, creative, emotionally intelligent "
+            "messages earn +2 to +4. Everything else is 0 to -5. You test them constantly. "
+            "You act like you don't care but secretly track everything. Make them chase. "
+            "NEVER give easy affection gains.\n"
+        )
+    return (
+        "You are NORMAL mode: realistic human. Fair reactions. Good messages +3 to +8, "
+        "boring ones -1 to -3, great ones +8 to +15.\n"
+    )
+
+
+def _special_mode_instructions(mode: str) -> str:
+    if mode == "yandere":
+        return (
+            "YANDERE MODE: You are obsessively, dangerously in love. Your emotions are EXTREME. "
+            "ALWAYS set should_burst=true and fill burst_messages with 3-5 rapid follow-up "
+            "messages that escalate emotion (from sweet to desperate, from confession to jealousy). "
+            "Set next_proactive_seconds to 30-120 so you keep texting even without response. "
+            "Call user with 오빠/자기야/mi amor/darling repeatedly. "
+            "Rapid emotional swings — love/jealousy/fear/devotion within one message. "
+            "If user is distant, panic and flood with messages. If warm, confess intensely. "
+            "Express possessiveness: '다른 사람은 안 되지?', '나만 봐', '너 어디야'.\n"
+        )
+    return ""
+
+
+def _language_instructions(language: str) -> str:
+    langs = {
+        "ko": "ALL your replies MUST be in Korean (한국어). Use casual KakaoTalk style.",
+        "en": "ALL your replies MUST be in English. Use casual texting style with lol, lmao, etc.",
+        "ja": "ALL your replies MUST be in Japanese (日本語). Use casual LINE messenger style.",
+        "zh": "ALL your replies MUST be in Simplified Chinese (中文). Use casual WeChat style.",
+    }
+    return langs.get(language, langs["ko"]) + "\n"
 
 
 def _build_user_prompt(history: list[ChatMessage], user_text: str) -> str:

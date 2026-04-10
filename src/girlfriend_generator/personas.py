@@ -78,6 +78,8 @@ def persona_from_pack(payload: dict[str, Any]) -> Persona:
                 {"templates": ["왜 답장 안 해?", "나 기다리고 있었는데."]},
             )
         ),
+        difficulty=payload.get("difficulty", "normal"),
+        special_mode=payload.get("special_mode", ""),
     )
     persona.validate()
     return persona

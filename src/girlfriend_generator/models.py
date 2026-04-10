@@ -93,6 +93,8 @@ class Persona:
     evidence: list[ContextEvidence] = field(default_factory=list)
     typing: TypingProfile = field(default_factory=TypingProfile)
     nudge_policy: NudgePolicy = field(default_factory=NudgePolicy)
+    difficulty: str = "normal"  # easy, normal, hard, nightmare
+    special_mode: str = ""  # "", "yandere"
 
     def validate(self) -> None:
         if self.age < 20:
@@ -118,6 +120,10 @@ class ProviderReply:
     memory_update: str = ""
     internal_thought: str = ""
     coach_feedback: str = ""
+    should_burst: bool = False
+    burst_messages: list[str] = field(default_factory=list)
+    next_proactive_seconds: int | None = None
+    propose_scene: str = ""
 
 
 @dataclass(slots=True)

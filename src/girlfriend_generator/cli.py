@@ -482,7 +482,14 @@ def _show_main_menu(
             return _show_main_menu(bundled_personas, args, skip_intro=True)
 
 
-_BUILTIN_PERSONAS = {"yu-na-girlfriend.json", "han-seo-jin-crush.json", "lee-su-bin-bestfriend.json"}
+_BUILTIN_PERSONAS = {
+    "yu-na-girlfriend.json",
+    "han-seo-jin-crush.json",
+    "lee-su-bin-bestfriend.json",
+    "wonyoung-idol.json",
+    "dua-international.json",
+    "reze-anime.json",
+}
 
 
 def _persona_studio(
@@ -501,7 +508,8 @@ def _persona_studio(
         ]
 
         items = [
-            MenuItem("Create New", "Build a persona from scratch", icon="✨"),
+            MenuItem("Auto Generate", "Enter a name/link — AI creates persona", icon="🤖"),
+            MenuItem("Create Manually", "Step-by-step wizard", icon="✨"),
         ]
         for cp in custom_personas:
             try:
@@ -524,7 +532,14 @@ def _persona_studio(
         if choice is None or choice == len(items) - 1:  # Back
             return None
 
-        if choice == 0:  # Create
+        if choice == 0:  # Auto Generate
+            result = _auto_generate_persona(console)
+            if result is not None:
+                return result
+            bundled_personas = discover_personas(persona_dir) if persona_dir.exists() else []
+            continue
+
+        if choice == 1:  # Create Manually
             return _create_persona_wizard(console)
 
         if custom_personas and choice == len(items) - 2:  # Delete
@@ -533,8 +548,8 @@ def _persona_studio(
             bundled_personas = discover_personas(persona_dir) if persona_dir.exists() else []
             continue
 
-        # Edit: choice 1..N maps to custom_personas[choice-1]
-        edit_idx = choice - 1
+        # Edit: choice 2..N maps to custom_personas[choice-2]
+        edit_idx = choice - 2
         if 0 <= edit_idx < len(custom_personas):
             result = _edit_persona(console, custom_personas[edit_idx])
             if result is not None:
@@ -542,6 +557,73 @@ def _persona_studio(
             continue
 
         return None
+
+
+def _auto_generate_persona(console: "Console") -> Path | None:  # type: ignore[name-defined]
+    """Auto-generate persona from a name/URL using LLM."""
+    from rich.panel import Panel
+    from rich.prompt import Prompt
+    from .persona_auto import generate_persona_from_input, save_generated_persona
+
+    console.print(Panel(
+        "[bold bright_green]🤖 Auto Persona Generator[/bold bright_green]\n\n"
+        "[dim]Enter anything — celebrity name, character name, profile URL, or description.[/dim]\n"
+        "[dim]Examples:[/dim]\n"
+        "  [cyan]장원영[/cyan]\n"
+        "  [cyan]Dua Lipa[/cyan]\n"
+        "  [cyan]Reze from Chainsaw Man[/cyan]\n"
+        "  [cyan]https://instagram.com/some_account[/cyan]\n"
+        "  [cyan]차가운 도시 여자 26살 변호사[/cyan]",
+        border_style="bright_green",
+        width=70,
+        padding=(1, 2),
+    ))
+    console.print()
+
+    try:
+        input_text = Prompt.ask("  [bold]Who/what?[/bold]", console=console)
+    except (EOFError, KeyboardInterrupt):
+        return None
+
+    if not input_text.strip():
+        return None
+
+    console.print(f"\n  [dim]🤖 Generating persona from '{input_text}'...[/dim]")
+    console.print("  [dim]This may take 5-10 seconds...[/dim]\n")
+
+    try:
+        data = generate_persona_from_input(input_text.strip())
+    except Exception as exc:
+        console.print(f"  [red]Failed: {exc}[/red]\n")
+        try:
+            input("  Press Enter to go back...")
+        except (EOFError, KeyboardInterrupt):
+            pass
+        return None
+
+    # Show preview
+    console.print(Panel(
+        f"[bold]{data.get('name', '?')}[/bold]  [dim]{data.get('age', '?')}세  {data.get('relationship_mode', '?')}[/dim]\n\n"
+        f"[white]{data.get('background', '')[:100]}...[/white]\n\n"
+        f"[dim]Interests:[/dim] {', '.join(data.get('interests', [])[:3])}\n"
+        f'[dim]Greeting:[/dim] [italic]"{data.get("greeting", "")}"[/italic]',
+        title="[bold green]✓ Generated[/bold green]",
+        border_style="bright_green",
+        width=70,
+    ))
+
+    try:
+        from rich.prompt import Confirm
+        if not Confirm.ask("\n  [bold]Save and start chat?[/bold]", console=console, default=True):
+            return None
+    except (EOFError, KeyboardInterrupt):
+        return None
+
+    persona_dir = bundled_persona_dir()
+    path = save_generated_persona(data, persona_dir)
+    console.print(f"  [green]✓ Saved: {path.name}[/green]")
+    console.print(f"  [bold green]Starting chat with {data.get('name', '')}...[/bold green]\n")
+    return path
 
 
 def _edit_persona(console: "Console", persona_path: Path) -> Path | None:  # type: ignore[name-defined]

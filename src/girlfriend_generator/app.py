@@ -594,18 +594,13 @@ def _handle_key(
                 "voice_output_enabled": voice_output_enabled,
                 "quit": False,
             }
-        if _assistant_busy(pending_job, pending_delivery):
-            session.add_system_message(
-                "Wait for the current assistant turn to finish first."
-            )
-            return {
-                "draft": draft,
-                "status_line": "Assistant is still busy.",
-                "pending_job": pending_job,
-                "show_trace": show_trace,
-                "voice_output_enabled": voice_output_enabled,
-                "quit": False,
-            }
+        # User sending while assistant busy: abandon the in-flight job
+        # and start a new one that sees ALL user messages. The old thread
+        # still runs in background but its result will be ignored.
+        if pending_job is not None and not text.startswith("/"):
+            pending_job = None  # drop reference; thread completes into dead queue
+        if pending_delivery is not None and not text.startswith("/"):
+            pending_delivery = None
         if text.startswith("/"):
             return _handle_command(
                 text=text,

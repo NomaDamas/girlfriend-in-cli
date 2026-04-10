@@ -1,0 +1,93 @@
+{
+  "interview_id": "interview_20260408_112500",
+  "status": "completed",
+  "rounds": [
+    {
+      "round_number": 1,
+      "question": "When the LLM persona decides to trigger a scene transition, how should that decision be communicated technically — should the LLM embed a structured signal (e.g., a JSON tag or special token) in its chat response that the system parses out, or should there be a separate \"evaluator\" LLM call after every N messages that judges whether it's time to move?",
+      "user_response": "N개 메시지마다 별도 LLM 판단 콜 방식. 5-10개 메시지마다 별도 evaluator LLM 호출로 장소 이동 여부를 판단한다. 정확도가 높고, 페르소나 응답과 분리되어 있어서 시스템이 깔끔함.",
+      "timestamp": "2026-04-08T11:44:01.483544Z"
+    },
+    {
+      "round_number": 2,
+      "question": "Good — separate evaluator call every 5–10 messages, cleanly decoupled from the persona response. That pins down the trigger mechanism.\n\nSeveral tracks are still open: scene definitions, the report card UX, user agency during transitions, and conversation continuity across scenes. Let me start with the one that most shapes the data model.\n\nAre the possible scenes/locations **predefined in a JSON config** (e.g., a fixed list like `cafe → han_river → doorstep` with metadata per scene), or should the **evaluator LLM dynamically generate** the next location and its description based on conversation context — and does the user get any say (accept/reject/suggest) before the transition happens?",
+      "user_response": "하이브리드. 기본 장소 목록은 JSON config에 정의(cafe, han_river, park, convenience_store, home_doorstep 등 + 메타데이터: 분위기, BGM 무드, 시간대)하되, evaluator LLM이 대화 맥락에 맞는 장소를 동적으로 제안할 수도 있게. 유저에게는 수락/거절 선택권을 준다. 페르소나가 \"우리 한강 갈래?\" 같이 자연스럽게 제안하고, 유저가 응답하면 이동.",
+      "timestamp": "2026-04-08T11:44:31.109692Z"
+    },
+    {
+      "round_number": 3,
+      "question": "Hybrid scene config with natural in-character proposals and user accept/reject — that cleanly resolves both the data model and user agency tracks.\n\nThe next biggest undefined deliverable is the **report card** that displays during transitions. When the user accepts the scene change and the transition fires, what should the report card actually look like and how does the user proceed past it — is it a **full-screen Rich panel** that pauses the chat until the user presses a key, or an **inline block** that scrolls into the chat history? And for \"conversation highlights,\" do you mean the LLM generates a narrative summary (e.g., \"서로 좋아하는 음악 취향이 같다는 걸 알게 됨\"), or are you thinking of extracting specific memorable message quotes from the conversation?",
+      "user_response": "Full-screen Rich panel로 잠깐 멈추는 방식. 유저가 Enter 누르면 다음 장소로 이동. 카카오톡에서 채팅방 나갈 때 요약 보여주는 느낌. \n\n리포트 내용:\n1) 현재 호감도 게이지 (하트 바)\n2) LLM이 생성하는 narrative summary — \"서로 음악 취향이 같다는 걸 알게 됨\" 같은 하이라이트\n3) 관계 조언 — LLM이 \"다음 장소에서는 좀 더 진심을 보여봐\" 같은 팁\n4) 다음 장소 미리보기 — 장소 이름, 분위기 설명, BGM 무드\n\n이건 게임의 스테이지 클리어 화면 같은 느낌. 시각적으로 풍부하게.",
+      "timestamp": "2026-04-08T11:45:05.151776Z"
+    },
+    {
+      "round_number": 4,
+      "question": "Report card UX is now well-defined — full-screen Rich panel with four sections, stage-clear feel.\n\nTwo major tracks remain: **conversation continuity across scenes** and **end-state logic**. The continuity question most impacts the LLM integration architecture.\n\nWhen a scene transition fires and the user arrives at the new location, what happens to the conversation history and persona behavior — does the **full chat history carry forward** into the next scene's LLM context (risking token limits over multiple transitions), does the system **summarize the previous scene** and start fresh, or something else? And does the persona's system prompt change per scene (e.g., different tone/behavior at `han_river` vs `cafe`)?",
+      "user_response": "이전 장면을 LLM이 요약해서 context로 넘기고, 채팅 히스토리는 새로 시작. 요약에는 핵심 대화 포인트, 호감도 변화, 무드 상태가 포함됨. 이렇게 하면 토큰 제한 걱정 없이 여러 장면을 이어갈 수 있음.\n\n페르소나의 system prompt는 장면별로 조금 달라져야 함. 카페에서는 좀 더 캐주얼, 한강에서는 로맨틱, 집 앞에서는 아쉬운 감정 등. 장소 메타데이터에 mood_hint를 넣어서 system prompt에 반영.\n\n게임 오버/엔딩은 따로 없음. 유저가 원할 때까지 계속 진행. 호감도가 극도로 낮아지면 페르소나가 자연스럽게 \"오늘은 여기까지 하자\" 라고 할 수 있음.",
+      "timestamp": "2026-04-08T11:45:58.725778Z"
+    },
+    {
+      "round_number": 5,
+      "question": "Most major tracks are now pinned down — trigger, scenes, report card, continuity, and end-state. One interaction loop remains undefined that directly affects the evaluator's retry logic.\n\nWhen the user **rejects** the persona's scene-change proposal (e.g., \"아니, 카페에서 좀 더 있자\"), what should happen — does the evaluator simply **wait another 5–10 messages and try again** (possibly suggesting the same location), or should it be forced to **propose a different location** next time, and is there a cap on how many times it can propose before backing off entirely?",
+      "user_response": "거절하면 5-10개 메시지 더 기다린 후 다시 시도. 단, 같은 장소는 제안하지 않고 다른 장소를 제안. 3번 연속 거절당하면 evaluator가 백오프해서 더 이상 제안 안 하고, 페르소나가 자연스럽게 현재 장소에서 대화를 이어감. 유저가 직접 \"/move\" 같은 명령어로 장소 이동을 요청할 수도 있어야 함.",
+      "timestamp": "2026-04-08T11:46:46.347983Z"
+    },
+    {
+      "round_number": 6,
+      "question": "All major design tracks — trigger, scenes, report card, continuity, rejection/backoff, `/move`, and end-state — are now resolved. One last architectural seam before this is seed-ready:\n\nA single scene transition involves **up to 4 separate LLM calls**: (1) evaluator judges \"time to move,\" (2) persona's next response must naturally weave in the proposal (requiring an injected directive), (3) report card generation (narrative summary + relationship advice), (4) previous-scene summary for context carry-over. Should these be **consolidated** (e.g., combine report card + scene summary into one call, or have the evaluator call also generate the proposal text), or is the cost/latency of 3–4 extra LLM calls per transition acceptable — and should any of these use a **cheaper/faster model** than the main persona model?",
+      "user_response": "통합한다. (1) evaluator가 \"이동할 때인지 + 어디로 갈지 + 제안 대사\"를 하나의 콜로 판단. (2) 유저 수락 후 \"리포트 카드(요약 + 조언) + 이전 장면 context 요약\"을 하나의 콜로 생성. 총 2콜로 줄인다. evaluator는 메인 모델과 동일한 모델 사용 (페르소나 일관성 유지). gpt-4.1-mini가 이미 빠르고 저렴하니까 비용 걱정 없음.",
+      "timestamp": "2026-04-08T11:47:38.647997Z"
+    },
+    {
+      "round_number": 7,
+      "question": "All major design tracks — trigger, scenes, report card, continuity, rejection/backoff, `/move`, and end-state — are now resolved. One last architectural seam before this is seed-ready:\n\nA single scene transition involves **up to 4 separate LLM calls**: (1) evaluator judges \"time to move,\" (2) persona's next response must naturally weave in the proposal (requiring an injected directive), (3) report card generation (narrative summary + relationship advice), (4) previous-scene summary for context carry-over. Should these be **consolidated** (e.g., combine report card + scene summary into one call, or have the evaluator call also generate the proposal text), or is the cost/latency of 3–4 extra LLM calls per transition acceptable — and should any of these use a **cheaper/faster model** than the main persona model?",
+      "user_response": "양방향으로 mutate한다. 장소 이동 성공: 호감도 +5, 새 장소 mood_hint로 mood.shift() 호출. 거절: 호감도 -2. 나머지는 일반 대화에서 유기적으로 업데이트.\n\n추가 상세:\n- scenes/ 디렉토리에 JSON 파일로 장소 정의\n- 각 장소: name, description, mood_hint, bgm_mood, time_of_day, available_after_affection (최소 호감도)\n- evaluator 프롬프트: 현재 장소, 호감도, 무드, 최근 대화 8개를 보고 판단\n- 리포트 카드: Rich Panel with 4 sections (호감도 바, 하이라이트, 조언, 다음 장소)\n- /move 명령어: 유저가 직접 장소 목록 보고 선택\n- 장소 간 이동 시 이전 대화 LLM 요약 → 새 장소 context로 전달\n- 시스템 프롬프트에 장소 mood_hint 주입\n\n이걸로 모든 디자인이 확정됨.",
+      "timestamp": "2026-04-08T11:50:45.070143Z"
+    },
+    {
+      "round_number": 8,
+      "question": "All design decisions are now pinned down with no material ambiguity remaining:\n\n- **Trigger**: Evaluator LLM call every 5–10 messages (last 8 messages + affection + mood + current scene)\n- **Scenes**: Hybrid JSON config (`scenes/` directory) + dynamic LLM proposals; `available_after_affection` gating\n- **User agency**: Natural in-character proposal → accept/reject; `/move` command for manual control\n- **LLM calls**: Consolidated to 2 (evaluator + report-card/summary)\n- **Report card**: Full-screen Rich panel (heart bar, narrative highlights, advice, next scene preview), Enter to proceed\n- **Continuity**: LLM summary of previous scene → new context; fresh chat history per scene\n- **Persona per scene**: `mood_hint` injected into system prompt\n- **Rejection**: Different location next time, 3-strike backoff, `/move` always available\n- **Mutation**: Accept → +5 affection + `mood.shift()`; Reject → −2 affection\n- **End-state**: No formal ending; organic persona-driven exit at very low affection\n\n모든 트랙이 확정되었고 구현을 바꿀 만한 모호함이 남아있지 않습니다. **Seed 생성으로 넘어가도 될까요**, 아니면 아직 언급하지 않은 엣지 케이스나 추가 요구사항이 있나요?",
+      "user_response": "추가 상세 정리:\n\n1. Evaluator 호출 주기: 정확히 매 7개 user 메시지마다 (assistant 메시지 제외). message_count % 7 == 0일 때.\n\n2. 기본 장소 목록 (scenes/):\n- cafe.json: {name: \"카페\", mood_hint: \"casual\", bgm_mood: \"neutral\", min_affection: 0}\n- park.json: {name: \"한강 공원\", mood_hint: \"romantic\", bgm_mood: \"flirty\", min_affection: 30}\n- restaurant.json: {name: \"맛집\", mood_hint: \"playful\", bgm_mood: \"happy\", min_affection: 20}\n- night_walk.json: {name: \"야경 산책\", mood_hint: \"flirty\", bgm_mood: \"flirty\", min_affection: 50}\n- convenience_store.json: {name: \"편의점\", mood_hint: \"casual\", bgm_mood: \"playful\", min_affection: 0}\n- home_doorstep.json: {name: \"집 앞\", mood_hint: \"emotional\", bgm_mood: \"worried\", min_affection: 60}\n\n3. Evaluator LLM 프롬프트 구조:\nInput: current_scene, affection_score, mood, last 8 messages, available_scenes (min_affection 충족하는 것만)\nOutput JSON: {should_move: bool, next_scene: string, proposal_line: string}\n\n4. Report Card LLM 프롬프트:\nInput: current_scene, next_scene, all messages from current scene, affection, mood\nOutput JSON: {highlights: [string], advice: string, scene_summary: string}\n\n5. 파일 구조:\n- src/girlfriend_generator/scenes.py — Scene 데이터 모델, 로딩, evaluator\n- scenes/ — JSON 장소 파일들\n- app.py에 scene transition UI 통합\n\n6. /move 명령어: 가용 장소 목록을 arrow_select로 보여주고 선택\n\n이걸로 모든 구현 상세가 확정됨.",
+      "timestamp": "2026-04-08T14:34:12.309643Z"
+    }
+  ],
+  "initial_context": "Add a \"Scene System\" to Girlfriend in CLI — a terminal romance simulator built with Python + Rich. The project already has: persona system (JSON), chat UI with Rich Live, OpenAI/Anthropic LLM providers, mood tracking, affection scoring, nudge/initiative systems. \n\nThe new feature: After enough conversation or when the LLM persona decides it's natural, the persona triggers a scene/location change (e.g., \"카페에서 만남\" → \"한강 산책\" → \"집 앞 헤어짐\"). Each transition shows a visual report card in the TUI with: current affection score, mood analysis, conversation highlights, and relationship advice. The persona autonomously decides when to suggest moving locations based on conversation flow, mood, and affection level.",
+  "created_at": "2026-04-08T11:25:00.744966Z",
+  "updated_at": "2026-04-08T14:34:48.986208Z",
+  "is_brownfield": true,
+  "codebase_paths": [
+    {
+      "path": "/Users/jinminseong/Desktop/girlfriend_generator",
+      "role": "primary"
+    }
+  ],
+  "codebase_context": "",
+  "explore_completed": false,
+  "ambiguity_score": 0.1945,
+  "ambiguity_breakdown": {
+    "goal_clarity": {
+      "name": "Goal Clarity",
+      "clarity_score": 0.95,
+      "weight": 0.35,
+      "justification": "The goal is exceptionally well-defined through systematic Q&A resolution of every major design track. The feature — a Scene System with LLM-driven location transitions, report cards, and conversation continuity — is pinned down to implementation-level detail: exact evaluator trigger frequency (every 7 user messages), consolidated LLM call structure (2 calls with specified input/output JSON schemas), 6 predefined scene definitions with full metadata, report card layout (4-section Rich panel), rejection/backoff logic (3-strike, different-location constraint), affection mutation values (+5/−2), /move command UX, per-scene system prompt injection via mood_hint, and explicit file structure (scenes.py, scenes/ directory, app.py integration). Virtually no design ambiguity remains."
+    },
+    "constraint_clarity": {
+      "name": "Constraint Clarity",
+      "clarity_score": 0.82,
+      "weight": 0.25,
+      "justification": "Technical constraints are well-specified: evaluator fires at message_count % 7 == 0 (user messages only), context window is last 8 messages, min_affection gating per scene, 3-strike backoff cap, same model for evaluator and persona (gpt-4.1-mini mentioned), 2 consolidated LLM calls per transition, and specific affection score thresholds for each scene (0–60 range). Minor gaps: no explicit error handling strategy for LLM call failures or malformed evaluator JSON, no latency/timeout constraints on the evaluator or report-card calls, no stated token budget for the scene summary carried forward, and no concurrency constraints if the evaluator fires mid-typing. These are secondary but could surface during implementation."
+    },
+    "success_criteria_clarity": {
+      "name": "Success Criteria Clarity",
+      "clarity_score": 0.55,
+      "weight": 0.25,
+      "justification": "Success Criteria Clarity justification not provided by model."
+    },
+    "context_clarity": {
+      "name": "Context Clarity",
+      "clarity_score": 0.87,
+      "weight": 0.15,
+      "justification": "Existing codebase context is clearly established: Python + Rich stack, persona system (JSON-based), Rich Live chat UI, dual LLM provider support (OpenAI/Anthropic), and existing mood tracking, affection scoring, and nudge/initiative systems. Integration points are specific — mood.shift() for scene transitions, system prompt injection for mood_hint, app.py as the UI integration point, src/girlfriend_generator/ as the module root. The conversation references concrete existing abstractions (persona responses, system prompts, affection scores) and specifies exactly where the new code fits. Minor gap: no explicit description of the current affection score range/scale (the scene min_affection values imply 0–100+ but this is never stated), and no detail on how the existing nudge/initiative systems might interact with or conflict with the new evaluator system."
+    }
+  }
+}

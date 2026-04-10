@@ -290,19 +290,26 @@ def test_voice_commands_toggle_when_backend_is_available(tmp_path: Path) -> None
     assert disabled["status_line"] == "Voice output disabled."
 
 
-def test_handle_key_blocks_user_send_while_assistant_delivery_is_pending(
+def test_handle_key_allows_user_send_while_assistant_delivery_is_pending(
     tmp_path: Path,
 ) -> None:
+    """User can now send follow-up messages while assistant is busy.
+    The in-flight delivery is abandoned so the new message can be processed."""
     persona = _load_test_persona()
     session = ConversationSession(persona=persona)
     session.bootstrap()
+
+    class _StubProvider:
+        def generate_reply(self, *args, **kwargs):
+            from girlfriend_generator.models import ProviderReply
+            return ProviderReply(text="ok", typing_seconds=0.1, trace_note="")
 
     outcome = _handle_key(
         key="\n",
         draft="지금 바로 답장해도 돼?",
         session=session,
         persona=persona,
-        provider=object(),
+        provider=_StubProvider(),
         pending_job=None,
         pending_delivery=PendingDelivery(
             kind="reply",
@@ -317,11 +324,10 @@ def test_handle_key_blocks_user_send_while_assistant_delivery_is_pending(
         session_dir=tmp_path,
     )
 
-    assert outcome["draft"] == "지금 바로 답장해도 돼?"
-    assert outcome["pending_job"] is None
-    assert outcome["status_line"] == "Assistant is still busy."
-    assert session.messages[-1].role == "system"
-    assert "assistant turn" in session.messages[-1].text
+    # Draft should be cleared (message was accepted)
+    assert outcome["draft"] == ""
+    # The pending delivery should have been abandoned
+    assert outcome.get("sent") is True
 
 
 def test_listen_command_blocks_while_assistant_delivery_is_pending(

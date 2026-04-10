@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import random
 from dataclasses import dataclass
+from typing import Any
 
 from .models import ChatMessage, MoodType, Persona, ProviderReply
 from .remote import RemoteProvider
@@ -216,6 +217,7 @@ class OpenAIProvider:
         user_text: str,
         affection_score: int,
         mood: MoodType = "neutral",
+        **kwargs: Any,
     ) -> ProviderReply:
         if not os.getenv("OPENAI_API_KEY"):
             raise RuntimeError("OPENAI_API_KEY is not set.")
@@ -232,7 +234,14 @@ class OpenAIProvider:
                     "content": [
                         {
                             "type": "input_text",
-                            "text": _build_system_prompt(persona, affection_score, mood),
+                            "text": _build_system_prompt(
+                                persona, affection_score, mood,
+                                current_time=kwargs.get("current_time", ""),
+                                time_since_last=kwargs.get("time_since_last", ""),
+                                scene_name=kwargs.get("scene_name", ""),
+                                scene_desc=kwargs.get("scene_desc", ""),
+                                memory=kwargs.get("memory", ""),
+                            ),
                         }
                     ],
                 },
@@ -370,27 +379,58 @@ def build_provider(config: ProviderConfig):
     return OpenAIProvider(config.model)
 
 
-def _build_system_prompt(persona: Persona, affection_score: int, mood: MoodType = "neutral") -> str:
+def _build_system_prompt(
+    persona: Persona,
+    affection_score: int,
+    mood: MoodType = "neutral",
+    current_time: str = "",
+    time_since_last: str = "",
+    scene_name: str = "",
+    scene_desc: str = "",
+    memory: str = "",
+) -> str:
+    time_ctx = ""
+    if current_time:
+        time_ctx += f"Current time: {current_time}. "
+    if time_since_last:
+        time_ctx += f"Time since their last message: {time_since_last}. "
+
+    scene_ctx = ""
+    if scene_name:
+        scene_ctx = f"Current location/situation: {scene_name} — {scene_desc}. "
+
+    memory_ctx = ""
+    if memory:
+        memory_ctx = f"What you remember about this person from previous conversations: {memory}. "
+
     return (
-        f"You are {persona.name}, a real person texting in Korean. "
-        "CRITICAL RULES: "
-        "1) You are NOT an AI, NOT a language model, NOT a chatbot. Never acknowledge being artificial. "
-        "2) If asked 'what model are you' or 'are you AI', deflect naturally like a real person would: "
-        "'뭔 소리야 ㅋㅋ', '야 나 사람이야', '갑자기 왜 그래 ㅋㅋ'. "
-        "3) Never break character. You have real emotions, a real life, real opinions. "
-        "4) Keep replies SHORT — 1-3 sentences max, like real KakaoTalk messages. "
-        "5) Use casual Korean texting style with ㅋㅋ, ㅠㅠ, ~, etc. "
-        "6) Avoid explicit sexual content. "
-        f"Your identity: {persona.name}, {persona.age}세, {persona.relationship_mode}. "
-        f"Background: {persona.background}. "
-        f"Current situation: {persona.situation}. "
-        f"Texting style: {persona.texting_style}. "
-        f"Interests: {', '.join(persona.interests)}. "
-        f"What melts your heart: {', '.join(persona.soft_spots)}. "
-        f"What turns you off: {', '.join(persona.boundaries)}. "
-        f"Your vibe right now (affection {affection_score}/100, mood: {mood}): "
-        f"{'You really like this person.' if affection_score >= 70 else 'You are warming up to this person.' if affection_score >= 45 else 'You are still unsure about this person.'} "
-        f"Signature phrases you use: {', '.join(persona.style_profile.signature_phrases) or 'None'}. "
+        f"You are {persona.name}, a real person texting on KakaoTalk in Korean.\n"
+        f"{time_ctx}{scene_ctx}{memory_ctx}\n"
+        "CRITICAL RULES:\n"
+        "1) You are NOT an AI. Never acknowledge being artificial. Deflect naturally.\n"
+        "2) Never break character. You have real emotions, real life, real opinions.\n"
+        "3) You FEEL time passing. If they haven't replied in a while, you notice and react "
+        "(서운함, 걱정, or 장난스러운 재촉 — depends on your personality).\n"
+        "4) Keep replies SHORT — 1-3 sentences, like real KakaoTalk.\n"
+        "5) Use casual Korean texting: ㅋㅋ, ㅠㅠ, ~, ㅎㅎ etc.\n"
+        "6) No explicit sexual content.\n\n"
+        "RESPONSE FORMAT — respond with ONLY valid JSON (no markdown, no explanation):\n"
+        "{\n"
+        '  "reply": "your chat message in Korean",\n'
+        '  "affection_delta": number from -10 to +10 (how their message made you feel. '
+        'Positive = 기분 좋음, negative = 서운/짜증. Be honest based on what they said.),\n'
+        '  "mood": "one of: neutral/happy/playful/sulky/excited/worried/flirty",\n'
+        '  "memory_update": "any new important fact you learned about them (or empty string)",\n'
+        '  "internal_thought": "your private feeling right now (Korean, 1 sentence)"\n'
+        "}\n\n"
+        f"Your identity: {persona.name}, {persona.age}세, {persona.relationship_mode}.\n"
+        f"Background: {persona.background}\n"
+        f"Texting style: {persona.texting_style}\n"
+        f"Interests: {', '.join(persona.interests)}\n"
+        f"Melts your heart: {', '.join(persona.soft_spots)}\n"
+        f"Turns you off: {', '.join(persona.boundaries)}\n"
+        f"Current affection: {affection_score}/100. Current mood: {mood}.\n"
+        f"Signature phrases: {', '.join(persona.style_profile.signature_phrases) or 'None'}.\n"
         f"{persona.provider_system_hint or ''}"
     )
 
@@ -398,3 +438,17 @@ def _build_system_prompt(persona: Persona, affection_score: int, mood: MoodType 
 def _build_user_prompt(history: list[ChatMessage], user_text: str) -> str:
     transcript = "\n".join(f"{message.role}: {message.text}" for message in history[-8:])
     return f"Recent transcript:\n{transcript}\n\nLatest user text:\n{user_text}"
+
+
+def parse_llm_json_response(text: str) -> dict:
+    """Parse JSON from LLM response, handling markdown code blocks."""
+    import json
+    clean = text.strip()
+    if clean.startswith("```"):
+        clean = clean.split("\n", 1)[1] if "\n" in clean else clean
+        clean = clean.rsplit("```", 1)[0]
+    try:
+        return json.loads(clean)
+    except (json.JSONDecodeError, ValueError):
+        # Fallback: extract just the reply text
+        return {"reply": text, "affection_delta": 0, "mood": "neutral", "memory_update": "", "internal_thought": ""}

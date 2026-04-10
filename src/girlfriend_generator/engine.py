@@ -36,8 +36,7 @@ class ConversationSession:
         self.nudge_due_at = None
         self.nudge_count = 0
         self.schedule_initiative(now)
-        self._update_affection(text, now)
-        self._update_mood_from_text(text)
+        # Affection and mood are now judged by LLM, not keywords
         self.last_activity_at = now
 
     def add_assistant_message(

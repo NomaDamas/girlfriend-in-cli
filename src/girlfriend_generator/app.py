@@ -485,16 +485,38 @@ def _finish_job(
         if not isinstance(reply, ProviderReply):
             session.add_system_message("Unexpected reply object from provider.")
             return None, previous_delivery, previous_status
+
+        # Parse LLM JSON response for affection/mood/memory
+        from .providers import parse_llm_json_response
+        parsed = parse_llm_json_response(reply.text)
+        actual_text = parsed.get("reply", reply.text)
+        affection_delta = int(parsed.get("affection_delta", 0))
+        new_mood = parsed.get("mood", "")
+        memory_update = parsed.get("memory_update", "")
+        internal_thought = parsed.get("internal_thought", "")
+
+        # Apply LLM-judged affection change
+        session.affection_score = max(0, min(100, session.affection_score + affection_delta))
+        # Apply LLM-judged mood
+        if new_mood and new_mood in ("neutral", "happy", "playful", "sulky", "excited", "worried", "flirty"):
+            session.mood.shift(new_mood)
+        # Store memory (append to context_summary)
+        if memory_update:
+            if not hasattr(session, '_memory_notes'):
+                session._memory_notes = []
+            session._memory_notes.append(memory_update)
+
         # Add "seen" delay before typing indicator shows (1-2.5s)
         import random
         seen_delay = random.uniform(1.0, 2.5)
         now = time.monotonic()
+        trace_extra = f" | thought: {internal_thought}" if internal_thought else ""
         delivery = PendingDelivery(
             kind="reply",
-            text=reply.text,
+            text=actual_text,
             due_at=now + seen_delay + reply.typing_seconds,
             typing_starts_at=now + seen_delay,
-            trace_note=reply.trace_note,
+            trace_note=reply.trace_note + trace_extra,
         )
         return None, delivery, reply.trace_note
 
@@ -610,14 +632,23 @@ def _handle_key(
             )
         session.add_user_message(text)
         mood = session.mood.current
+        # Build time context for LLM
+        now_str = time.strftime("%Y-%m-%d %H:%M")
+        time_since = ""
+        if session.last_activity_at:
+            gap = (utc_now() - session.last_activity_at).total_seconds()
+            if gap > 60:
+                mins = int(gap / 60)
+                time_since = f"{mins}분" if mins < 60 else f"{mins // 60}시간 {mins % 60}분"
+        memory = "; ".join(getattr(session, '_memory_notes', [])[-5:])
         job = BackgroundJob(
             "reply",
-            provider.generate_reply,
-            persona,
-            session.recent_history(),
-            text,
-            session.affection_score,
-            mood,
+            lambda: provider.generate_reply(
+                persona, session.recent_history(), text,
+                session.affection_score, mood,
+                current_time=now_str, time_since_last=time_since,
+                memory=memory,
+            ),
         )
         return {
             "draft": "",

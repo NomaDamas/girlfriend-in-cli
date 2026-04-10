@@ -23,6 +23,9 @@ class ConversationSession:
     initiative_count: int = 0
     mood: MoodState = field(default_factory=MoodState)
     last_activity_at: datetime | None = None
+    memory_notes: list[str] = field(default_factory=list)
+    last_coach_feedback: str = ""
+    last_internal_thought: str = ""
 
     def bootstrap(self, now: datetime | None = None) -> None:
         now = now or utc_now()

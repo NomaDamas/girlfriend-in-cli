@@ -486,25 +486,30 @@ def _finish_job(
             session.add_system_message("Unexpected reply object from provider.")
             return None, previous_delivery, previous_status
 
-        # Parse LLM JSON response for affection/mood/memory
+        # Parse LLM JSON response for affection/mood/memory/coaching
         from .providers import parse_llm_json_response
         parsed = parse_llm_json_response(reply.text)
         actual_text = parsed.get("reply", reply.text)
-        affection_delta = int(parsed.get("affection_delta", 0))
+        try:
+            affection_delta = int(parsed.get("affection_delta", 0))
+        except (ValueError, TypeError):
+            affection_delta = 0
         new_mood = parsed.get("mood", "")
         memory_update = parsed.get("memory_update", "")
         internal_thought = parsed.get("internal_thought", "")
+        coach_feedback = parsed.get("user_feedback", "")
 
         # Apply LLM-judged affection change
         session.affection_score = max(0, min(100, session.affection_score + affection_delta))
         # Apply LLM-judged mood
         if new_mood and new_mood in ("neutral", "happy", "playful", "sulky", "excited", "worried", "flirty"):
             session.mood.shift(new_mood)
-        # Store memory (append to context_summary)
+        # Store memory
         if memory_update:
-            if not hasattr(session, '_memory_notes'):
-                session._memory_notes = []
-            session._memory_notes.append(memory_update)
+            session.memory_notes.append(memory_update)
+        # Store coach feedback and internal thought for trace display
+        session.last_coach_feedback = coach_feedback
+        session.last_internal_thought = internal_thought
 
         # Add "seen" delay before typing indicator shows (1-2.5s)
         import random
@@ -640,7 +645,7 @@ def _handle_key(
             if gap > 60:
                 mins = int(gap / 60)
                 time_since = f"{mins}분" if mins < 60 else f"{mins // 60}시간 {mins % 60}분"
-        memory = "; ".join(getattr(session, '_memory_notes', [])[-5:])
+        memory = "; ".join(session.memory_notes[-5:])
         job = BackgroundJob(
             "reply",
             lambda: provider.generate_reply(
@@ -1151,7 +1156,26 @@ def _render_trace(trace: RuntimeTrace, persona: Persona, session: ConversationSe
     table.add_row("Voice", f"{trace.voice_output_name}/{trace.voice_input_name}")
     table.add_row("Status", f"[dim]{trace.status_line[:20]}[/dim]")
 
-    return Panel(table, title="[dim]trace[/dim]", border_style="grey37", padding=(0, 0))
+    # Coach feedback panel
+    from rich.console import Group as RichGroup
+    feedback_panels = [table]
+    if session.last_internal_thought:
+        thought_text = f"[italic dim]{session.last_internal_thought[:80]}[/italic dim]"
+        feedback_panels.append(Panel(
+            thought_text,
+            title=f"[dim]{persona.name} 속마음[/dim]",
+            border_style="magenta",
+            padding=(0, 1),
+        ))
+    if session.last_coach_feedback:
+        feedback_panels.append(Panel(
+            f"[cyan]{session.last_coach_feedback[:120]}[/cyan]",
+            title="[bold cyan]💡 Dating Coach[/bold cyan]",
+            border_style="cyan",
+            padding=(0, 1),
+        ))
+    body = RichGroup(*feedback_panels)
+    return Panel(body, title="[dim]trace[/dim]", border_style="grey37", padding=(0, 0))
 
 
 def _build_render_key(
@@ -1192,6 +1216,8 @@ def _build_render_key(
         session.mood.intensity,
         scroll_offset,
         int(time.monotonic() * 3) % 4 if assistant_typing else 0,  # animate dots
+        session.last_coach_feedback,
+        session.last_internal_thought,
     )
 
 

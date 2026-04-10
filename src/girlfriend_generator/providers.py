@@ -421,7 +421,10 @@ def _build_system_prompt(
         'Positive = 기분 좋음, negative = 서운/짜증. Be honest based on what they said.),\n'
         '  "mood": "one of: neutral/happy/playful/sulky/excited/worried/flirty",\n'
         '  "memory_update": "any new important fact you learned about them (or empty string)",\n'
-        '  "internal_thought": "your private feeling right now (Korean, 1 sentence)"\n'
+        '  "internal_thought": "your private feeling right now (Korean, 1 sentence)",\n'
+        '  "user_feedback": "As a dating coach looking at the user\'s last message objectively, '
+        'give them a short tip in Korean on how they could have said it better. Be specific and '
+        'constructive. If their message was great, say so. (Korean, 1-2 sentences)"\n'
         "}\n\n"
         f"Your identity: {persona.name}, {persona.age}세, {persona.relationship_mode}.\n"
         f"Background: {persona.background}\n"

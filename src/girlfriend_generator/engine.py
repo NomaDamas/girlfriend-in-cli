@@ -26,6 +26,7 @@ class ConversationSession:
     memory_notes: list[str] = field(default_factory=list)
     last_coach_feedback: str = ""
     last_internal_thought: str = ""
+    ended: bool = False
 
     def bootstrap(self, now: datetime | None = None) -> None:
         now = now or utc_now()

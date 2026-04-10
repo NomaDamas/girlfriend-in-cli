@@ -257,12 +257,12 @@ def run_chat_app(config: AppConfig) -> int:
                         pending_delivery = None
 
                 # Check for game over / success ending
-                if session.affection_score <= 0 and not getattr(session, "_ended", False):
-                    session._ended = True
+                if session.affection_score <= 0 and not session.ended:
+                    session.ended = True
                     _show_ending(live, console, persona, session, "game_over", provider)
                     return 0
-                if session.affection_score >= 100 and not getattr(session, "_ended", False):
-                    session._ended = True
+                if session.affection_score >= 100 and not session.ended:
+                    session.ended = True
                     _show_ending(live, console, persona, session, "success", provider)
                     return 0
 
@@ -565,7 +565,8 @@ def _show_ending(
     console.print()
     console.print(Align.center(Text("Press Enter to return to main menu", style="dim")))
     try:
-        input()
+        from .wide_input import wide_input
+        wide_input("")
     except (EOFError, KeyboardInterrupt):
         pass
 

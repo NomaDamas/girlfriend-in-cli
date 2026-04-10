@@ -359,7 +359,8 @@ def _show_star_popup(console: "Console") -> None:  # type: ignore[name-defined]
     )))
 
     try:
-        answer = input("  Open GitHub to star? (y/n): ").strip().lower()
+        from .wide_input import wide_input
+        answer = wide_input("  Open GitHub to star? (y/n): ").strip().lower()
     except (EOFError, KeyboardInterrupt):
         answer = "n"
 
@@ -581,8 +582,9 @@ def _auto_generate_persona(console: "Console") -> Path | None:  # type: ignore[n
     ))
     console.print()
 
+    from .wide_input import wide_input
     try:
-        input_text = Prompt.ask("  [bold]Who/what?[/bold]", console=console)
+        input_text = wide_input("  Who/what?: ")
     except (EOFError, KeyboardInterrupt):
         return None
 
@@ -597,7 +599,7 @@ def _auto_generate_persona(console: "Console") -> Path | None:  # type: ignore[n
     except Exception as exc:
         console.print(f"  [red]Failed: {exc}[/red]\n")
         try:
-            input("  Press Enter to go back...")
+            wide_input("  Press Enter to go back...")
         except (EOFError, KeyboardInterrupt):
             pass
         return None
@@ -614,8 +616,8 @@ def _auto_generate_persona(console: "Console") -> Path | None:  # type: ignore[n
     ))
 
     try:
-        from rich.prompt import Confirm
-        if not Confirm.ask("\n  [bold]Save and start chat?[/bold]", console=console, default=True):
+        answer = wide_input("\n  Save and start chat? (Y/n): ").strip().lower()
+        if answer and answer.startswith("n"):
             return None
     except (EOFError, KeyboardInterrupt):
         return None
@@ -639,11 +641,11 @@ def _edit_persona(console: "Console", persona_path: Path) -> Path | None:  # typ
     console.print(f"\n  [bold]Editing: {name}[/bold]")
     console.print("  [dim]Press Enter to keep current value.[/dim]\n")
 
-    from rich.prompt import Prompt
+    from .wide_input import wide_input
 
     def _ask(prompt: str, current: str) -> str:
         try:
-            val = Prompt.ask(f"  {prompt}", default=current or "", console=console)
+            val = wide_input(f"  {prompt}: ", default=current or "")
             return val.strip() if val.strip() else current
         except (EOFError, KeyboardInterrupt):
             return current
@@ -651,7 +653,7 @@ def _edit_persona(console: "Console", persona_path: Path) -> Path | None:  # typ
     def _ask_list(prompt: str, current: list[str]) -> list[str]:
         display = ", ".join(current[:3])
         try:
-            val = Prompt.ask(f"  {prompt}", default=display, console=console)
+            val = wide_input(f"  {prompt}: ", default=display)
             if not val.strip():
                 return current
             return [item.strip() for item in val.split(",") if item.strip()]
@@ -674,8 +676,9 @@ def _edit_persona(console: "Console", persona_path: Path) -> Path | None:  # typ
     console.print(f"\n  [green]Saved: {persona_path.name}[/green]\n")
 
     # Ask if they want to chat now
+    from .wide_input import wide_input
     try:
-        chat = input("  Start chat with this persona? (y/n): ").strip().lower()
+        chat = wide_input("  Start chat with this persona? (y/n): ").strip().lower()
     except (EOFError, KeyboardInterrupt):
         return None
     if chat in ("y", "yes", "ㅛ"):
@@ -712,8 +715,9 @@ def _delete_persona(console: "Console", custom_personas: list[Path]) -> None:  #
     except Exception:
         name = target.stem
 
+    from .wide_input import wide_input
     try:
-        confirm = input(f"  Delete {name}? This cannot be undone. (y/n): ").strip().lower()
+        confirm = wide_input(f"  Delete {name}? This cannot be undone. (y/n): ").strip().lower()
     except (EOFError, KeyboardInterrupt):
         return
     if confirm in ("y", "yes", "ㅛ"):
@@ -734,19 +738,19 @@ def _create_persona_wizard(console: "Console") -> Path | None:  # type: ignore[n
         padding=(1, 2),
     ))
 
-    from rich.prompt import Prompt
+    from .wide_input import wide_input
 
     def _ask(prompt: str, default: str = "") -> str:
         try:
-            val = Prompt.ask(f"  {prompt}", default=default or "", console=console)
-            return val.strip()
+            val = wide_input(f"  {prompt}: ", default=default or "")
+            return val.strip() or default
         except (EOFError, KeyboardInterrupt):
             return default
 
     def _ask_list(prompt: str, hint: str = "") -> list[str]:
         hint_str = f" ({hint})" if hint else ""
         try:
-            val = Prompt.ask(f"  {prompt}{hint_str}", default="", console=console)
+            val = wide_input(f"  {prompt}{hint_str}: ")
             if not val:
                 return []
             return [item.strip() for item in val.split(",") if item.strip()]
@@ -1154,8 +1158,8 @@ def _set_api_key(console: "Console", env_var: str, provider_name: str, prefix: s
     console.print()
 
     try:
-        from rich.prompt import Prompt
-        key = Prompt.ask("  Key", console=console).strip()
+        from .wide_input import wide_input
+        key = wide_input("  Key: ").strip()
     except (EOFError, KeyboardInterrupt):
         return
 

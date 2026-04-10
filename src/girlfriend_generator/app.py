@@ -486,30 +486,15 @@ def _finish_job(
             session.add_system_message("Unexpected reply object from provider.")
             return None, previous_delivery, previous_status
 
-        # Parse LLM JSON response for affection/mood/memory/coaching
-        from .providers import parse_llm_json_response
-        parsed = parse_llm_json_response(reply.text)
-        actual_text = parsed.get("reply", reply.text)
-        try:
-            affection_delta = int(parsed.get("affection_delta", 0))
-        except (ValueError, TypeError):
-            affection_delta = 0
-        new_mood = parsed.get("mood", "")
-        memory_update = parsed.get("memory_update", "")
-        internal_thought = parsed.get("internal_thought", "")
-        coach_feedback = parsed.get("user_feedback", "")
-
-        # Apply LLM-judged affection change
-        session.affection_score = max(0, min(100, session.affection_score + affection_delta))
-        # Apply LLM-judged mood
-        if new_mood and new_mood in ("neutral", "happy", "playful", "sulky", "excited", "worried", "flirty"):
-            session.mood.shift(new_mood)
-        # Store memory
-        if memory_update:
-            session.memory_notes.append(memory_update)
-        # Store coach feedback and internal thought for trace display
-        session.last_coach_feedback = coach_feedback
-        session.last_internal_thought = internal_thought
+        # ProviderReply now has parsed fields from LLM JSON
+        actual_text = reply.text  # already clean
+        session.affection_score = max(0, min(100, session.affection_score + reply.affection_delta))
+        if reply.mood and reply.mood in ("neutral", "happy", "playful", "sulky", "excited", "worried", "flirty"):
+            session.mood.shift(reply.mood)
+        if reply.memory_update:
+            session.memory_notes.append(reply.memory_update)
+        session.last_coach_feedback = reply.coach_feedback
+        session.last_internal_thought = reply.internal_thought
 
         # Add "seen" delay before typing indicator shows (1-2.5s)
         import random
@@ -772,6 +757,18 @@ def _handle_command(
         return {
             "draft": "",
             "status_line": "Session status posted.",
+            "pending_job": pending_job,
+            "show_trace": show_trace,
+            "voice_output_enabled": voice_output_enabled,
+            "quit": False,
+        }
+    if lowered == "/advice":
+        # Show latest coach feedback as a system message
+        feedback = session.last_coach_feedback or "아직 조언이 없어요. 메시지를 보내보세요!"
+        session.add_system_message(f"💡 Coach: {feedback}")
+        return {
+            "draft": "",
+            "status_line": "Coach advice posted.",
             "pending_job": pending_job,
             "show_trace": show_trace,
             "voice_output_enabled": voice_output_enabled,

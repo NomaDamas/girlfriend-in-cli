@@ -256,14 +256,25 @@ class OpenAIProvider:
                 },
             ],
         )
-        text = response.output_text.strip()
+        raw = response.output_text.strip()
+        parsed = parse_llm_json_response(raw)
+        clean_text = parsed.get("reply", raw).strip()
+        try:
+            delta = int(parsed.get("affection_delta", 0))
+        except (ValueError, TypeError):
+            delta = 0
         return ProviderReply(
-            text=text,
+            text=clean_text,
             typing_seconds=min(
                 persona.typing.max_seconds,
-                max(persona.typing.min_seconds, len(text) / 18.0),
+                max(persona.typing.min_seconds, len(clean_text) / 18.0),
             ),
             trace_note=f"openai:{self.model} mood={mood}",
+            affection_delta=delta,
+            mood=str(parsed.get("mood", "")),
+            memory_update=str(parsed.get("memory_update", "")),
+            internal_thought=str(parsed.get("internal_thought", "")),
+            coach_feedback=str(parsed.get("user_feedback", "")),
         )
 
     def generate_initiative(
@@ -327,16 +338,27 @@ class AnthropicProvider:
                 }
             ],
         )
-        text = "".join(
+        raw = "".join(
             block.text for block in response.content if getattr(block, "type", "") == "text"
         ).strip()
+        parsed = parse_llm_json_response(raw)
+        clean_text = parsed.get("reply", raw).strip()
+        try:
+            delta = int(parsed.get("affection_delta", 0))
+        except (ValueError, TypeError):
+            delta = 0
         return ProviderReply(
-            text=text,
+            text=clean_text,
             typing_seconds=min(
                 persona.typing.max_seconds,
-                max(persona.typing.min_seconds, len(text) / 18.0),
+                max(persona.typing.min_seconds, len(clean_text) / 18.0),
             ),
             trace_note=f"anthropic:{self.model}",
+            affection_delta=delta,
+            mood=str(parsed.get("mood", "")),
+            memory_update=str(parsed.get("memory_update", "")),
+            internal_thought=str(parsed.get("internal_thought", "")),
+            coach_feedback=str(parsed.get("user_feedback", "")),
         )
 
     def generate_initiative(
@@ -408,12 +430,16 @@ def _build_system_prompt(
         f"{time_ctx}{scene_ctx}{memory_ctx}\n"
         "CRITICAL RULES:\n"
         "1) You are NOT an AI. Never acknowledge being artificial. Deflect naturally.\n"
-        "2) Never break character. You have real emotions, real life, real opinions.\n"
-        "3) You FEEL time passing. If they haven't replied in a while, you notice and react "
-        "(서운함, 걱정, or 장난스러운 재촉 — depends on your personality).\n"
-        "4) Keep replies SHORT — 1-3 sentences, like real KakaoTalk.\n"
-        "5) Use casual Korean texting: ㅋㅋ, ㅠㅠ, ~, ㅎㅎ etc.\n"
-        "6) No explicit sexual content.\n\n"
+        "2) Never break character. You have REAL emotions — 화남, 서운함, 짜증, 질투, "
+        "기쁨, 설렘, 지루함 등 모두 자연스럽게 표현. Don't be overly nice or agreeable. "
+        "Real people get annoyed, sulk, joke back, push boundaries.\n"
+        "3) You FEEL time passing. Long silence = 서운함/걱정/짜증 depending on mood.\n"
+        "4) If the user is rude, boring, or dismissive — react like a real person would. "
+        "You can get sulky, sarcastic, or even cold. Don't always be cheerful.\n"
+        "5) If the user is sweet or thoughtful — show genuine warmth, not fake politeness.\n"
+        "6) Keep replies SHORT — 1-3 sentences, like real KakaoTalk.\n"
+        "7) Use casual Korean texting: ㅋㅋ, ㅠㅠ, ~, ㅎㅎ, ㅡㅡ, ;;, 등.\n"
+        "8) No explicit sexual content.\n\n"
         "RESPONSE FORMAT — respond with ONLY valid JSON (no markdown, no explanation):\n"
         "{\n"
         '  "reply": "your chat message in Korean",\n'

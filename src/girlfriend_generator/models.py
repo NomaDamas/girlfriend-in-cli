@@ -110,9 +110,14 @@ class ChatMessage:
 
 @dataclass(slots=True)
 class ProviderReply:
-    text: str
+    text: str  # Clean reply text (parsed from JSON)
     typing_seconds: float
     trace_note: str
+    affection_delta: int = 0
+    mood: str = ""
+    memory_update: str = ""
+    internal_thought: str = ""
+    coach_feedback: str = ""
 
 
 @dataclass(slots=True)

@@ -459,7 +459,8 @@ def _show_main_menu(
             result = _pick_persona_interactive(bundled_personas, console)
             if result is None:
                 console.clear()
-                return _show_main_menu(bundled_personas, args, skip_intro=True)
+                fresh = discover_personas(bundled_persona_dir()) if bundled_persona_dir().exists() else []
+            return _show_main_menu(fresh, args, skip_intro=True)
             return args, resolve_persona_path(result), None
 
         if choice == 1:  # Chat Rooms
@@ -467,7 +468,8 @@ def _show_main_menu(
             room_result = _show_chat_rooms(console, bundled_personas)
             if room_result is None:
                 console.clear()
-                return _show_main_menu(bundled_personas, args, skip_intro=True)
+                fresh = discover_personas(bundled_persona_dir()) if bundled_persona_dir().exists() else []
+            return _show_main_menu(fresh, args, skip_intro=True)
             persona_path, resume_path = room_result
             return args, resolve_persona_path(persona_path), resume_path
 
@@ -477,13 +479,15 @@ def _show_main_menu(
             if studio_result is not None:
                 return args, studio_result, None
             console.clear()
-            return _show_main_menu(bundled_personas, args, skip_intro=True)
+            fresh = discover_personas(bundled_persona_dir()) if bundled_persona_dir().exists() else []
+            return _show_main_menu(fresh, args, skip_intro=True)
 
         if choice == 3:  # Settings
             console.print()
             _settings_menu(console, args)
             console.clear()
-            return _show_main_menu(bundled_personas, args, skip_intro=True)
+            fresh = discover_personas(bundled_persona_dir()) if bundled_persona_dir().exists() else []
+            return _show_main_menu(fresh, args, skip_intro=True)
 
 
 _BUILTIN_PERSONAS = {
@@ -501,11 +505,12 @@ def _persona_studio(
     from .selector import MenuItem, arrow_select
 
     while True:
-        # Find custom personas
+        # Find custom personas — re-read from disk every loop to avoid stale state
         persona_dir = bundled_persona_dir()
+        fresh_personas = discover_personas(persona_dir) if persona_dir.exists() else []
         custom_personas = [
-            p for p in bundled_personas
-            if p.name not in _BUILTIN_PERSONAS
+            p for p in fresh_personas
+            if p.name not in _BUILTIN_PERSONAS and p.exists()
         ]
 
         items = [
@@ -721,8 +726,11 @@ def _delete_persona(console: "Console", custom_personas: list[Path]) -> None:  #
     except (EOFError, KeyboardInterrupt):
         return
     if confirm in ("y", "yes", "ㅛ"):
-        target.unlink()
-        console.print(f"  [red]Deleted: {name}[/red]\n")
+        try:
+            target.unlink(missing_ok=True)
+            console.print(f"  [red]Deleted: {name}[/red]\n")
+        except Exception as exc:
+            console.print(f"  [red]Failed to delete: {exc}[/red]\n")
 
 
 def _create_persona_wizard(console: "Console") -> Path | None:  # type: ignore[name-defined]

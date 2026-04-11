@@ -188,6 +188,128 @@ def generate_persona_from_input(input_text: str, model: str = "gpt-4.1-mini") ->
     return data
 
 
+def deep_research_persona(
+    input_text: str,
+    on_progress: Any = None,
+    model: str = "gpt-4.1-mini",
+) -> dict[str, Any]:
+    """Multi-step deep research persona generation with progress callbacks.
+
+    Steps:
+    1. Analyze input to extract key entities/themes
+    2. Web search for each entity (up to 3 queries)
+    3. Gather all context together
+    4. Synthesize into detailed persona JSON
+    5. Review and enrich
+    """
+    if not os.getenv("OPENAI_API_KEY"):
+        raise RuntimeError("OPENAI_API_KEY is not set. Set it in Settings > API Keys.")
+
+    try:
+        from openai import OpenAI
+    except ImportError as exc:
+        raise RuntimeError("Install openai package.") from exc
+
+    def _notify(step: int) -> None:
+        if callable(on_progress):
+            try:
+                on_progress(step)
+            except Exception:
+                pass
+
+    client = OpenAI()
+
+    # Step 1: Analyze
+    _notify(0)
+    analyze_resp = client.responses.create(
+        model=model,
+        input=(
+            f"Input for persona creation:\n{input_text}\n\n"
+            "Extract up to 3 key web search queries that would help research this persona. "
+            "Return as JSON: {\"queries\": [\"q1\", \"q2\", \"q3\"], \"is_url\": true/false}. "
+            "If input is a URL, set is_url=true and queries=[]. "
+            "If input is a known name/character, make queries specific. "
+            "If input is a free-form description, make queries based on key traits mentioned. "
+            "Respond with ONLY valid JSON, no markdown."
+        ),
+    )
+    try:
+        raw = analyze_resp.output_text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[1].rsplit("```", 1)[0]
+        plan = json.loads(raw)
+        queries = plan.get("queries", []) or []
+        is_url = plan.get("is_url", False)
+    except Exception:
+        queries = [input_text[:100]]
+        is_url = _looks_like_url(input_text)
+
+    # Step 2-3: Gather context
+    _notify(1)
+    research_chunks: list[str] = []
+    if is_url or _looks_like_url(input_text):
+        html = _fetch_url_content(input_text)
+        if html:
+            research_chunks.append(html)
+
+    _notify(2)
+    for q in queries[:3]:
+        try:
+            search_resp = client.responses.create(
+                model=model,
+                tools=[{"type": "web_search"}],
+                input=(
+                    f"Search the web for: {q}\n\n"
+                    f"Summarize concrete facts, personality traits, style quotes, "
+                    f"characteristic behavior, and anything useful for building "
+                    f"a texting-persona simulation. Max 400 words."
+                ),
+            )
+            research_chunks.append(search_resp.output_text.strip())
+        except Exception:
+            continue
+
+    combined_research = "\n\n---\n\n".join(research_chunks)[:8000]
+
+    # Step 4: Synthesize
+    _notify(3)
+    full_input = (
+        f"{input_text}\n\n"
+        f"=== Research context (use this to ground the persona) ===\n"
+        f"{combined_research if combined_research else '(no web context available — invent a believable character)'}"
+    )
+    prompt = _AUTO_PERSONA_PROMPT.format(input_text=full_input)
+
+    generate_resp = client.responses.create(
+        model=model,
+        temperature=0.9,
+        input=[
+            {"role": "user", "content": [{"type": "input_text", "text": prompt}]}
+        ],
+    )
+    raw = generate_resp.output_text.strip()
+    if raw.startswith("```"):
+        raw = raw.split("\n", 1)[1] if "\n" in raw else raw
+        raw = raw.rsplit("```", 1)[0]
+
+    try:
+        data = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"LLM returned invalid JSON: {exc}\n\n{raw[:500]}") from exc
+
+    # Step 5: Validate & finalize
+    _notify(4)
+    required = ["name", "age", "relationship_mode", "background", "situation",
+                "texting_style", "interests", "soft_spots", "boundaries", "greeting"]
+    for field_name in required:
+        if field_name not in data:
+            raise RuntimeError(f"Generated persona missing required field: {field_name}")
+    if data.get("age", 0) < 20:
+        data["age"] = 20
+
+    return data
+
+
 def save_generated_persona(data: dict[str, Any], personas_dir: Path) -> Path:
     """Save generated persona to personas/ directory."""
     from .session_io import slugify

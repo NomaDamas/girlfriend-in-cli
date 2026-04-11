@@ -150,3 +150,21 @@ def wide_input(prompt: str = "", default: str = "") -> str:
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
     return buf
+
+
+def wide_multiline_input(prompt: str = "  > ") -> str:
+    """Read multiple lines until an empty line is entered.
+
+    Each line is collected with wide_input() so Korean backspace works.
+    Returns the joined text separated by newlines.
+    """
+    lines: list[str] = []
+    while True:
+        try:
+            line = wide_input(prompt)
+        except (EOFError, KeyboardInterrupt):
+            break
+        if not line.strip():
+            break
+        lines.append(line)
+    return "\n".join(lines)

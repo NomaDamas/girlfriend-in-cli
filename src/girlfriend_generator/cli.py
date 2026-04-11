@@ -566,41 +566,73 @@ def _persona_studio(
 
 
 def _auto_generate_persona(console: "Console") -> Path | None:  # type: ignore[name-defined]
-    """Auto-generate persona from a name/URL using LLM."""
+    """Auto-generate persona from a name/URL/description using deep research."""
     from rich.panel import Panel
-    from rich.prompt import Prompt
-    from .persona_auto import generate_persona_from_input, save_generated_persona
+    from .persona_auto import generate_persona_from_input, save_generated_persona, deep_research_persona
+    from .wide_input import wide_input, wide_multiline_input
 
+    console.clear()
     console.print(Panel(
-        "[bold bright_green]🤖 Auto Persona Generator[/bold bright_green]\n\n"
-        "[dim]Enter a name, URL, or description.[/dim]\n"
-        "[dim]The system will web-search and generate a persona automatically.[/dim]\n\n"
-        "[dim]Examples:[/dim]\n"
+        "[bold bright_green]🤖 Auto Persona Generator  (Deep Research)[/bold bright_green]\n\n"
+        "[dim]Enter anything — a name, URL, or a full multi-line description.[/dim]\n"
+        "[dim]Press Enter on an empty line to finish. Deep research will run automatically.[/dim]\n\n"
+        "[dim]Examples (single-line or multi-line):[/dim]\n"
         "  [cyan]장원영[/cyan]\n"
         "  [cyan]Dua Lipa[/cyan]\n"
         "  [cyan]Reze from Chainsaw Man[/cyan]\n"
         "  [cyan]https://namu.wiki/w/아이유[/cyan]\n"
-        "  [cyan]차가운 도시 여자 26살 변호사[/cyan]",
+        "  [cyan]차가운 도시 여자 26살 변호사[/cyan]\n\n"
+        "[dim]Or describe in detail (multi-line):[/dim]\n"
+        "  [cyan]홍대에서 일러스트 그리는 24살 여자.[/cyan]\n"
+        "  [cyan]INFP, 조용하지만 웃음 많음.[/cyan]\n"
+        "  [cyan]고양이 두 마리 키우고 새벽에 작업함.[/cyan]",
         border_style="bright_green",
-        width=70,
+        width=80,
         padding=(1, 2),
     ))
     console.print()
+    console.print("  [dim]Type your input (Enter on empty line to submit):[/dim]")
+    console.print()
 
-    from .wide_input import wide_input
     try:
-        input_text = wide_input("  Who/what?: ")
+        input_text = wide_multiline_input("  > ")
     except (EOFError, KeyboardInterrupt):
         return None
 
     if not input_text.strip():
         return None
 
-    console.print(f"\n  [dim]🤖 Researching '{input_text}' on the web...[/dim]")
-    console.print("  [dim]This may take 10-20 seconds...[/dim]\n")
+    console.clear()
+    console.print(Panel(
+        f"[bold]🔍 Deep Research Mode[/bold]\n\n"
+        f"[dim]Input:[/dim]\n[white]{input_text[:300]}{'...' if len(input_text) > 300 else ''}[/white]",
+        border_style="bright_cyan",
+        width=80,
+        padding=(1, 2),
+    ))
+    console.print()
 
+    # Deep research — multi-step with progress
+    from rich.live import Live
+    from rich.spinner import Spinner
+    steps = [
+        "🔍 Analyzing input...",
+        "🌐 Web searching...",
+        "📚 Gathering context...",
+        "🧠 Synthesizing persona...",
+        "✨ Finalizing details...",
+    ]
     try:
-        data = generate_persona_from_input(input_text.strip())
+        with Live(
+            Spinner("dots", text=f"  {steps[0]}", style="cyan"),
+            console=console,
+            refresh_per_second=10,
+        ) as live:
+            def on_progress(step_idx: int) -> None:
+                if 0 <= step_idx < len(steps):
+                    live.update(Spinner("dots", text=f"  {steps[step_idx]}", style="cyan"))
+
+            data = deep_research_persona(input_text.strip(), on_progress=on_progress)
     except Exception as exc:
         console.print(f"  [red]Failed: {exc}[/red]\n")
         try:
@@ -608,6 +640,8 @@ def _auto_generate_persona(console: "Console") -> Path | None:  # type: ignore[n
         except (EOFError, KeyboardInterrupt):
             pass
         return None
+
+    console.clear()
 
     # Show preview
     console.print(Panel(

@@ -27,6 +27,7 @@ class ConversationSession:
     last_coach_feedback: str = ""
     last_internal_thought: str = ""
     ended: bool = False
+    proactive_due_at: datetime | None = None  # LLM-decided proactive message time
 
     def bootstrap(self, now: datetime | None = None) -> None:
         now = now or utc_now()

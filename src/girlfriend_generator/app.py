@@ -266,6 +266,29 @@ def run_chat_app(config: AppConfig) -> int:
                     _show_ending(live, console, persona, session, "success", provider)
                     return 0
 
+                # LLM-scheduled proactive follow-up (highest priority)
+                proactive_ready = (
+                    session.proactive_due_at is not None
+                    and now >= session.proactive_due_at
+                    and pending_job is None
+                    and pending_delivery is None
+                )
+                if proactive_ready:
+                    session.proactive_due_at = None
+                    try:
+                        proactive_reply = provider.generate_initiative(
+                            persona, session.recent_history(), session.affection_score,
+                        )
+                        if proactive_reply:
+                            pending_delivery = PendingDelivery(
+                                kind="initiative",
+                                text=proactive_reply,
+                                due_at=time.monotonic() + 0.6,
+                                trace_note="proactive: LLM scheduled follow-up",
+                            )
+                    except Exception:
+                        pass
+
                 if session.nudge_due(now) and pending_job is None and pending_delivery is None:
                     nudge_text = provider.generate_nudge(
                         persona, session.recent_history(), session.affection_score,
@@ -617,6 +640,12 @@ def _finish_job(
             session.memory_notes.append(reply.memory_update)
         session.last_coach_feedback = reply.coach_feedback
         session.last_internal_thought = reply.internal_thought
+        # LLM-decided proactive follow-up scheduling
+        if reply.next_proactive_seconds and reply.next_proactive_seconds > 0:
+            from datetime import timedelta
+            session.proactive_due_at = utc_now() + timedelta(seconds=reply.next_proactive_seconds)
+        else:
+            session.proactive_due_at = None
 
         # Add "seen" delay before typing indicator shows (1-2.5s)
         import random

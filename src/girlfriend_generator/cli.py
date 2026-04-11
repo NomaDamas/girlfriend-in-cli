@@ -1234,10 +1234,40 @@ def _pick_persona_interactive(personas: list[Path], console: "Console | None" = 
     if choice is None:
         return None
 
+    selected_path = personas[choice]
     try:
-        data = json.loads(personas[choice].read_text(encoding="utf-8"))
+        data = json.loads(selected_path.read_text(encoding="utf-8"))
         name = data.get("name", "")
     except Exception:
+        data = {}
         name = ""
+
+    # Difficulty picker (overrides persona default)
+    difficulty_items = [
+        MenuItem("Easy", "잘 풀어준다, 작은 것도 +", icon="🟢"),
+        MenuItem("Normal", "현실적", icon="🟡"),
+        MenuItem("Hard", "까다롭다, 노력 필요", icon="🟠"),
+        MenuItem("Nightmare", "거의 불가능, 시니컬", icon="🔴"),
+        MenuItem("Persona Default", f"기본값 ({data.get('difficulty', 'normal')})", icon="⚙️"),
+    ]
+    diff_choice = arrow_select(
+        console, difficulty_items,
+        title=f"Difficulty for {name}",
+        border_style="yellow",
+    )
+    if diff_choice is None:
+        return None
+
+    diff_map = {0: "easy", 1: "normal", 2: "hard", 3: "nightmare", 4: None}
+    chosen_diff = diff_map.get(diff_choice)
+    if chosen_diff is not None and data:
+        # Override the persona's difficulty for this session by writing back
+        data["difficulty"] = chosen_diff
+        selected_path.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        console.print(f"\n  [yellow]Difficulty: {chosen_diff}[/yellow]")
+
     console.print(f"\n  [bold magenta]Starting chat with {name}...[/bold magenta]\n")
-    return personas[choice]
+    return selected_path

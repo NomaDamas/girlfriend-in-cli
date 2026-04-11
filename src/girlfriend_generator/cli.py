@@ -514,7 +514,8 @@ def _persona_studio(
         ]
 
         items = [
-            MenuItem("Auto Generate", "Enter a name/link — AI creates persona", icon="🤖"),
+            MenuItem("Auto Generate", "Enter a name/link — deep research", icon="🤖"),
+            MenuItem("Import Persona", "From file, URL, or pasted JSON", icon="📥"),
             MenuItem("Create Manually", "Step-by-step wizard", icon="✨"),
         ]
         for cp in custom_personas:
@@ -542,20 +543,23 @@ def _persona_studio(
             result = _auto_generate_persona(console)
             if result is not None:
                 return result
-            bundled_personas = discover_personas(persona_dir) if persona_dir.exists() else []
             continue
 
-        if choice == 1:  # Create Manually
+        if choice == 1:  # Import Persona
+            result = _import_persona(console)
+            if result is not None:
+                return result
+            continue
+
+        if choice == 2:  # Create Manually
             return _create_persona_wizard(console)
 
         if custom_personas and choice == len(items) - 2:  # Delete
             _delete_persona(console, custom_personas)
-            # Refresh bundled_personas list
-            bundled_personas = discover_personas(persona_dir) if persona_dir.exists() else []
             continue
 
-        # Edit: choice 2..N maps to custom_personas[choice-2]
-        edit_idx = choice - 2
+        # Edit: choice 3..N maps to custom_personas[choice-3]
+        edit_idx = choice - 3
         if 0 <= edit_idx < len(custom_personas):
             result = _edit_persona(console, custom_personas[edit_idx])
             if result is not None:
@@ -563,6 +567,134 @@ def _persona_studio(
             continue
 
         return None
+
+
+def _import_persona(console: "Console") -> Path | None:  # type: ignore[name-defined]
+    """Import a persona from file path, URL, or pasted JSON."""
+    from rich.panel import Panel
+    from .wide_input import wide_input, wide_multiline_input
+    from .selector import MenuItem, arrow_select
+    from .personas import persona_from_pack
+
+    console.clear()
+    console.print(Panel(
+        "[bold bright_cyan]📥 Import Persona[/bold bright_cyan]\n\n"
+        "[dim]Import a persona created by someone else.[/dim]\n"
+        "[dim]Any JSON matching the persona schema will work.[/dim]\n\n"
+        "[dim]See personas/PERSONA_FORMAT.md for the format spec.[/dim]",
+        border_style="bright_cyan",
+        width=70,
+        padding=(1, 2),
+    ))
+    console.print()
+
+    items = [
+        MenuItem("From File Path", "Local .json file on disk", icon="📄"),
+        MenuItem("From URL", "HTTP URL (GitHub Gist, Pastebin, etc.)", icon="🌐"),
+        MenuItem("Paste JSON", "Paste the JSON content directly", icon="📋"),
+        MenuItem("Back", "", icon="←"),
+    ]
+    choice = arrow_select(console, items, title="Import source", border_style="bright_cyan")
+    if choice is None or choice == 3:
+        return None
+
+    data: dict[str, Any] | None = None
+
+    if choice == 0:
+        try:
+            path_str = wide_input("  File path: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            return None
+        if not path_str:
+            return None
+        src = Path(path_str).expanduser().resolve()
+        if not src.exists():
+            console.print(f"  [red]File not found: {src}[/red]")
+            wide_input("  Press Enter...")
+            return None
+        try:
+            data = json.loads(src.read_text(encoding="utf-8"))
+        except Exception as exc:
+            console.print(f"  [red]Invalid JSON: {exc}[/red]")
+            wide_input("  Press Enter...")
+            return None
+
+    elif choice == 1:
+        try:
+            url = wide_input("  URL: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            return None
+        if not url:
+            return None
+        # Support GitHub Gist raw URL auto-conversion
+        if "gist.github.com" in url and "/raw/" not in url:
+            url = url.rstrip("/") + "/raw"
+        try:
+            from urllib import request as _request
+            req = _request.Request(
+                url,
+                headers={"User-Agent": "Mozilla/5.0"},
+            )
+            with _request.urlopen(req, timeout=15) as resp:
+                raw = resp.read().decode("utf-8", errors="ignore")
+            data = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            console.print(f"  [red]URL content is not valid JSON: {exc}[/red]")
+            wide_input("  Press Enter...")
+            return None
+        except Exception as exc:
+            console.print(f"  [red]Fetch failed: {exc}[/red]")
+            wide_input("  Press Enter...")
+            return None
+
+    elif choice == 2:
+        console.print("  [dim]Paste the JSON content. Empty line to submit.[/dim]")
+        console.print()
+        try:
+            raw = wide_multiline_input("  > ")
+        except (EOFError, KeyboardInterrupt):
+            return None
+        if not raw.strip():
+            return None
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            console.print(f"  [red]Invalid JSON: {exc}[/red]")
+            wide_input("  Press Enter...")
+            return None
+
+    if data is None:
+        return None
+
+    # Validate by constructing the Persona
+    try:
+        persona = persona_from_pack(data)
+    except Exception as exc:
+        console.print(f"  [red]Invalid persona data: {exc}[/red]")
+        wide_input("  Press Enter...")
+        return None
+
+    # Save
+    from .session_io import slugify
+    persona_dir = bundled_persona_dir()
+    persona_dir.mkdir(parents=True, exist_ok=True)
+    filename = f"{slugify(persona.name)}-imported.json"
+    save_path = persona_dir / filename
+    save_path.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
+    console.print(f"\n  [bold green]✓ Imported: {persona.name}[/bold green]")
+    console.print(f"  [dim]Saved to: {save_path.name}[/dim]\n")
+
+    try:
+        chat = wide_input("  Start chat now? (y/n): ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        return None
+    if chat in ("y", "yes", ""):
+        return save_path
+    return None
 
 
 def _auto_generate_persona(console: "Console") -> Path | None:  # type: ignore[name-defined]

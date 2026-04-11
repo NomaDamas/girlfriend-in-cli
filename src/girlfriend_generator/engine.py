@@ -28,6 +28,8 @@ class ConversationSession:
     last_internal_thought: str = ""
     ended: bool = False
     proactive_due_at: datetime | None = None  # LLM-decided proactive message time
+    strategy_uses_this_scene: int = 0  # /strategy discussions used in current scene
+    max_strategy_per_scene: int = 3
 
     def bootstrap(self, now: datetime | None = None) -> None:
         now = now or utc_now()

@@ -349,6 +349,12 @@ def run_chat_app(config: AppConfig) -> int:
                     )
                     draft = outcome["draft"]
                     scroll_offset = 0 if outcome.get("sent") else scroll_offset
+                    # Strategy discussion
+                    if outcome.get("strategy"):
+                        _show_strategy_discussion(
+                            live, console, persona, session, provider, scene_state,
+                        )
+                        last_render_key = None
                     # Scene: handle pending proposal acceptance/rejection
                     if outcome.get("sent") and scene_state.pending_proposal:
                         user_text = session.messages[-1].text if session.messages else ""
@@ -394,6 +400,7 @@ def run_chat_app(config: AppConfig) -> int:
                                 session.add_system_message(render_report_card(report))
                                 # Transition
                                 scene_state.accept_transition(target)
+                                session.strategy_uses_this_scene = 0  # reset per scene
                                 session.affection_score = min(100, session.affection_score + 5)
                                 session.mood.shift(target.mood_hint)
                                 # Clear messages for new scene, keep summary
@@ -496,6 +503,153 @@ def run_chat_app(config: AppConfig) -> int:
                 persona=persona,
                 messages=session.messages,
             )
+
+
+def _show_strategy_discussion(
+    live: Any,
+    console: Console,
+    persona: Persona,
+    session: ConversationSession,
+    provider: Any,
+    scene_state: Any,
+) -> None:
+    """Pause chat, show strategic LLM discussion in a full-screen card.
+
+    Limited to 3 uses per scene. The LLM acts as a dating strategist
+    analyzing the current state and suggesting specific next moves.
+    """
+    from rich.align import Align
+    from rich.panel import Panel
+    from rich.text import Text
+    from rich.console import Group as RichGroup
+    from .wide_input import wide_input
+
+    # Check usage limit
+    if session.strategy_uses_this_scene >= session.max_strategy_per_scene:
+        live.stop()
+        console.clear()
+        console.print()
+        console.print(Align.center(Panel(
+            Text.assemble(
+                ("\n  Strategy cards exhausted for this scene.\n", "bold yellow"),
+                (f"  You used all {session.max_strategy_per_scene} discussions.\n", "white"),
+                ("\n  Move to a new scene via /move to refresh.\n", "dim"),
+            ),
+            title="[bold yellow]⚠ Limit reached[/bold yellow]",
+            border_style="yellow",
+            width=60,
+        )))
+        console.print()
+        try:
+            wide_input("  Press Enter to continue...")
+        except (EOFError, KeyboardInterrupt):
+            pass
+        live.start(refresh=True)
+        return
+
+    live.stop()
+    console.clear()
+
+    # Show "thinking" spinner
+    from rich.spinner import Spinner
+    from rich.live import Live as RichLive
+    with RichLive(
+        Spinner("dots", text="  🧠 Strategist is analyzing...", style="cyan"),
+        console=console,
+        refresh_per_second=10,
+    ) as spinner:
+        # Build strategy prompt
+        recent = "\n".join(
+            f"{m.role}: {m.text}" for m in session.messages[-12:] if m.role != "system"
+        )
+        strategy_prompt = (
+            f"You are a sharp dating strategist analyzing a live conversation. "
+            f"Target: {persona.name} ({persona.age}세, {persona.relationship_mode}), "
+            f"difficulty={persona.difficulty}. "
+            f"Current affection: {session.affection_score}/100. Mood: {session.mood.current}.\n\n"
+            f"Recent conversation:\n{recent}\n\n"
+            f"Analyze the dynamic and give a strategic card. Respond with ONLY JSON:\n"
+            "{\n"
+            '  "assessment": "1-2 sentences on the current state of the relationship",\n'
+            '  "user_strength": "what the user is doing well (1 sentence)",\n'
+            '  "user_weakness": "what the user is doing wrong (1 sentence, specific)",\n'
+            '  "strategy": "high-level strategic recommendation (2 sentences)",\n'
+            '  "suggested_lines": ["concrete message 1 to try", "message 2", "message 3"],\n'
+            '  "avoid": ["what NOT to say 1", "what NOT to say 2"]\n'
+            "}"
+        )
+        try:
+            strategy_reply = provider.generate_reply(
+                persona, session.recent_history(), strategy_prompt,
+                session.affection_score, session.mood.current,
+            )
+            import json as _json
+            raw = strategy_reply.text
+            if raw.startswith("```"):
+                raw = raw.split("\n", 1)[1].rsplit("```", 1)[0]
+            data = _json.loads(raw)
+        except Exception:
+            data = {
+                "assessment": "분석에 실패했습니다.",
+                "user_strength": "",
+                "user_weakness": "",
+                "strategy": "잠시 후 다시 시도해보세요.",
+                "suggested_lines": [],
+                "avoid": [],
+            }
+
+    session.strategy_uses_this_scene += 1
+    uses_left = session.max_strategy_per_scene - session.strategy_uses_this_scene
+
+    console.clear()
+    console.print()
+
+    rows = [
+        Text(""),
+        Text.assemble(("  STRATEGY ANALYSIS\n", "bold bright_cyan")),
+        Text.assemble(("  ─────────────────\n", "dim")),
+        Text(""),
+        Text.assemble(("  Current State\n", "bold")),
+        Text.assemble(("  ", ""), (data.get("assessment", ""), "white")),
+        Text(""),
+        Text.assemble(("  ✓ Strength  ", "bold green"), (data.get("user_strength", ""), "green")),
+        Text.assemble(("  ✗ Weakness  ", "bold red"), (data.get("user_weakness", ""), "red")),
+        Text(""),
+        Text.assemble(("  ► Strategy\n", "bold yellow")),
+        Text.assemble(("  ", ""), (data.get("strategy", ""), "yellow")),
+        Text(""),
+        Text.assemble(("  Suggested Lines\n", "bold bright_cyan")),
+    ]
+    for line in data.get("suggested_lines", [])[:3]:
+        rows.append(Text.assemble(("    • ", "cyan"), (line, "white")))
+    if data.get("avoid"):
+        rows.append(Text(""))
+        rows.append(Text.assemble(("  Avoid\n", "bold red")))
+        for a in data.get("avoid", [])[:3]:
+            rows.append(Text.assemble(("    ✗ ", "red"), (a, "dim red")))
+    rows.append(Text(""))
+    rows.append(Text.assemble(
+        (f"  Strategy cards used: {session.strategy_uses_this_scene}/{session.max_strategy_per_scene}  ", "dim"),
+        (f"({uses_left} left this scene)", "dim italic"),
+    ))
+    rows.append(Text(""))
+
+    console.print(Align.center(Panel(
+        RichGroup(*rows),
+        title="[bold bright_cyan]  🎯 Strategy Discussion  [/bold bright_cyan]",
+        border_style="bright_cyan",
+        width=80,
+        padding=(0, 2),
+    )))
+    console.print()
+    console.print(Align.center(Text("Press Enter to return to chat", style="dim")))
+
+    try:
+        wide_input("")
+    except (EOFError, KeyboardInterrupt):
+        pass
+
+    live.start(refresh=True)
 
 
 def _show_ending(
@@ -881,7 +1035,7 @@ def _handle_command(
         }
     if lowered == "/help":
         session.add_system_message(
-            "Commands: /help /back /quit /trace /status /affection /export /music /voice on|off /listen"
+            "Commands: /help /back /quit /strategy /advice /trace /status /affection /export /music /voice on|off /listen"
         )
         return {
             "draft": "",
@@ -914,6 +1068,16 @@ def _handle_command(
             "show_trace": show_trace,
             "voice_output_enabled": voice_output_enabled,
             "quit": False,
+        }
+    if lowered == "/strategy" or lowered == "/discuss":
+        return {
+            "draft": "",
+            "status_line": "Strategy discussion...",
+            "pending_job": pending_job,
+            "show_trace": show_trace,
+            "voice_output_enabled": voice_output_enabled,
+            "quit": False,
+            "strategy": True,
         }
     if lowered == "/advice":
         # Show latest coach feedback as a system message

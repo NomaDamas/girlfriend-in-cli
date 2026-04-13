@@ -25,6 +25,9 @@ So yes:
 
 **Don’t just grind code. Grind charm.**
 
+# Demo
+https://github.com/user-attachments/assets/1126916c-6cdb-4e92-bfd6-53f6cf35ea15
+
 # Index
 
 - [✨ Why this exists](#-why-this-exists)

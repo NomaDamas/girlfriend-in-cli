@@ -101,8 +101,8 @@ If you can train coding instincts in the terminal, maybe you can train social in
 ### Option A — install with Homebrew
 
 ```bash
-brew tap NomaDamas/girlfriend-in-cli https://github.com/NomaDamas/girlfriend-in-cli
-brew install NomaDamas/girlfriend-in-cli/girlfriend-in-cli
+brew tap NomaDamas/girlfriend-in-cli https://github.com/NomaDamas/brew-girlfriend-in-cli.git
+brew install girlfriend-in-cli
 girlfriend-generator
 ```
 

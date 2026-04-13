@@ -2,24 +2,6 @@
 
 ![girlfriend-in-cli solo pepe](assets/readme/solo-pepe.png)
 
-# Index
-
-- [✨ Why this exists](#-why-this-exists)
-- [🛠️ What it does](#️-what-it-does)
-- [🧭 The philosophy](#-the-philosophy)
-- [🚀 Quick Start](#-quick-start)
-- [🎮 First run](#-first-run)
-- [🧠 Build your own persona harness](#-build-your-own-persona-harness)
-- [⌨️ Example commands](#️-example-commands)
-- [🌐 Remote mode](#-remote-mode)
-- [🎛️ In-app controls](#️-in-app-controls)
-- [🗂️ Sessions and export](#️-sessions-and-export)
-- [✅ Verification](#-verification)
-- [🧩 Local-only ECC setup](#-local-only-ecc-setup)
-- [🛣️ Project status](#️-project-status)
-- [⚖️ License](#️-license)
-- [📣 One-line pitch](#-one-line-pitch)
-
 **⚡ Wake up, nerds.**
 
 **💘 Your CLI boyfriend or girlfriend chats with you — sharpen your social skills and discover your charm.**
@@ -42,6 +24,25 @@ So yes:
 - 🧠 build your own persona harness and talk to the energy you want
 
 **Don’t just grind code. Grind charm.**
+
+# Index
+
+- [✨ Why this exists](#-why-this-exists)
+- [🛠️ What it does](#️-what-it-does)
+- [🧭 The philosophy](#-the-philosophy)
+- [🚀 Quick Start](#-quick-start)
+- [🎮 First run](#-first-run)
+- [🧠 Build your own persona harness](#-build-your-own-persona-harness)
+- [⌨️ Example commands](#️-example-commands)
+- [🌐 Remote mode](#-remote-mode)
+- [🎛️ In-app controls](#️-in-app-controls)
+- [🗂️ Sessions and export](#️-sessions-and-export)
+- [✅ Verification](#-verification)
+- [🧩 Local-only ECC setup](#-local-only-ecc-setup)
+- [🛣️ Project status](#️-project-status)
+- [⚖️ License](#️-license)
+- [📣 One-line pitch](#-one-line-pitch)
+
 
 ---
 

@@ -98,6 +98,17 @@ If you can train coding instincts in the terminal, maybe you can train social in
 
 ## 🚀 Quick Start
 
+### Option A — install with Homebrew
+
+```bash
+brew tap NomaDamas/girlfriend-in-cli https://github.com/NomaDamas/girlfriend-in-cli
+brew install NomaDamas/girlfriend-in-cli/girlfriend-in-cli
+girlfriend-generator
+```
+
+This is the easiest path for most users.
+
+### Option B — install from source
 From the repository root:
 
 ```bash
@@ -124,6 +135,15 @@ If you want a full smoke check:
 ```bash
 bash scripts/smoke.sh
 ```
+
+### Release-aware updates
+
+On startup, the app can check the latest **stable GitHub Release** and prompt before updating.
+
+- ✅ checks releases, not random commits on `main`
+- ✅ only updates when you explicitly say yes
+- ✅ supports safe upgrade flows for release installs
+- ✅ designed to protect users from unstable in-between pushes
 
 ---
 

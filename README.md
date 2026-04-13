@@ -42,7 +42,6 @@ https://github.com/user-attachments/assets/1126916c-6cdb-4e92-bfd6-53f6cf35ea15
 - [🗂️ Sessions and export](#️-sessions-and-export)
 - [✅ Verification](#-verification)
 - [🧩 Local-only ECC setup](#-local-only-ecc-setup)
-- [🛣️ Project status](#️-project-status)
 - [⚖️ License](#️-license)
 - [📣 One-line pitch](#-one-line-pitch)
 

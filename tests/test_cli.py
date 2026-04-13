@@ -145,5 +145,5 @@ def test_build_logo_rows_adds_shadow_layers() -> None:
 
     assert "♡ terminal romance simulator ♡" in plain_rows
     assert " ♡ terminal romance simulator ♡" in plain_rows
-    assert any("_   _" in row for row in plain_rows)
-    assert any("'####:" in row for row in plain_rows)
+    assert any("______" in row for row in plain_rows)
+    assert any("/ __/____" in row for row in plain_rows)

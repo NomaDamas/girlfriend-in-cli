@@ -271,25 +271,13 @@ _NERD_FRAMES = [
     "(✧ᴗ✧) ♡  Compiling feelings... 100%!",
 ]
 
-_GIRLFRIEND_LOGO_LINES = [
-    "               _   _                             ",
-    "     o        | | | |       o                 |  ",
-    " __,     ,_   | | | |  ,_       _   _  _    __|  ",
-    "/  | |  /  |  |/  |/  /  |  |  |/  / |/ |  /  |  ",
-    "\\_/|/|_/   |_/|__/|__/   |_/|_/|__/  |  |_/\\_/|_/",
-    "  /|              |\\                             ",
-    "  \\|              |/                             ",
-]
-
-_IN_CLI_LOGO_LINES = [
-    "'####:'##::: ##:::::'######::'##:::::::'####:",
-    ". ##:: ###:: ##::::'##... ##: ##:::::::. ##::",
-    ": ##:: ####: ##:::: ##:::..:: ##:::::::: ##::",
-    ": ##:: ## ## ##:::: ##::::::: ##:::::::: ##::",
-    ": ##:: ##. ####:::: ##::::::: ##:::::::: ##::",
-    ": ##:: ##:. ###:::: ##::: ##: ##:::::::: ##::",
-    "'####: ##::. ##::::. ######:: ########:'####:",
-    "....::..::::..::::::......:::........::....::",
+_LOGO_LINES = [
+    "          _      ______     _                __   _               ___ ",
+    "   ____ _(_)____/ / __/____(_)__  ____  ____/ /  (_)___     _____/ (_)",
+    "  / __ `/ / ___/ / /_/ ___/ / _ \\/ __ \\/ __  /  / / __ \\   / ___/ / / ",
+    " / /_/ / / /  / / __/ /  / /  __/ / / / /_/ /  / / / / /  / /__/ / /  ",
+    " \\__, /_/_/  /_/_/ /_/  /_/\\___/_/ /_/\\__,_/  /_/_/ /_/   \\___/_/_/   ",
+    "/____/                                                                 ",
 ]
 
 _MODE_ICONS = {
@@ -321,13 +309,8 @@ def _build_logo_rows() -> list["Text"]:  # type: ignore[name-defined]
     caption_face = "#ffd6ec"
 
     rows: list[Text] = []
-    for index, line in enumerate(_GIRLFRIEND_LOGO_LINES):
-        rows.append(Text(f"  {line}", style=f"bold {shadow_color}"))
-        rows.append(Text(line, style=f"bold {face_colors[index % len(face_colors)]}"))
-
-    rows.append(Text())
-    for index, line in enumerate(_IN_CLI_LOGO_LINES):
-        color = face_colors[(index + 2) % len(face_colors)]
+    for index, line in enumerate(_LOGO_LINES):
+        color = face_colors[index % len(face_colors)]
         rows.append(Text(f" {line}", style=f"bold {shadow_color}"))
         rows.append(Text(line, style=f"bold {color}"))
 

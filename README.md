@@ -1,6 +1,6 @@
 ![girlfriend-in-cli hero](assets/readme/hero-banner.png)
 
-![girlfriend-in-cli solo](assets/readme/solo.png)
+![girlfriend-in-cli solo pepe](assets/readme/solo-pepe.png)
 
 # girlfriend-in-cli
 

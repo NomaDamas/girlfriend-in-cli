@@ -455,6 +455,7 @@ def _play_intro(console: "Console") -> None:  # type: ignore[name-defined]
 
 
 _STAR_FLAG_PATH = Path.home() / ".girlfriend-in-cli" / "star_shown"
+_ONBOARDING_FLAG_PATH = Path.home() / ".girlfriend-in-cli" / "onboarding_seen"
 _GITHUB_REPO = "NomaDamas/girlfriend-in-cli"
 
 
@@ -505,6 +506,51 @@ def _show_star_popup(console: "Console") -> None:  # type: ignore[name-defined]
         _STAR_FLAG_PATH.write_text("shown", encoding="utf-8")
 
 
+def _show_first_run_onboarding(console: "Console", args: argparse.Namespace) -> None:
+    if _ONBOARDING_FLAG_PATH.exists():
+        return
+
+    from rich.align import Align
+    from rich.panel import Panel
+    from rich.text import Text
+
+    provider_hint = (
+        "OpenAI uses API keys here. ChatGPT login-only OAuth is not available for general API auth."
+        if args.provider == "openai"
+        else "Set your provider credentials in Settings before the best experience."
+    )
+
+    body = Text.assemble(
+        ("\n  Welcome, nerd.\n\n", "bold bright_cyan"),
+        ("  1. Leave a ", "white"),
+        ("GitHub star", "bold yellow"),
+        (" if this made you smile.\n", "white"),
+        ("  2. Open ", "white"),
+        ("Settings", "bold green"),
+        (" to configure your provider.\n", "white"),
+        ("  3. Start chatting and train charm in the terminal.\n\n", "white"),
+        (f"  {provider_hint}\n", "dim"),
+        ("  Tip: use ", "white"),
+        ("mygf", "bold magenta"),
+        (" for the fastest launch.\n", "white"),
+    )
+    console.print()
+    console.print(Align.center(Panel(
+        body,
+        title="[bold bright_cyan]  First Run Guide  [/bold bright_cyan]",
+        border_style="bright_cyan",
+        width=78,
+        padding=(0, 1),
+    )))
+    try:
+        from .wide_input import wide_input
+        wide_input("  Press Enter to continue...")
+    except (EOFError, KeyboardInterrupt):
+        pass
+    _ONBOARDING_FLAG_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _ONBOARDING_FLAG_PATH.write_text("shown", encoding="utf-8")
+
+
 def _show_main_menu(
     bundled_personas: list[Path],
     args: argparse.Namespace,
@@ -523,6 +569,7 @@ def _show_main_menu(
     if not skip_intro:
         _play_intro(console)
         _show_star_popup(console)
+        _show_first_run_onboarding(console, args)
         console.clear()
 
     # Centered logo block
@@ -607,6 +654,13 @@ def _show_main_menu(
             fresh = discover_personas(bundled_persona_dir()) if bundled_persona_dir().exists() else []
             return _show_main_menu(fresh, args, skip_intro=True)
 
+        if action == "usage_guide":
+            console.print()
+            _show_usage_guide(console, args)
+            console.clear()
+            fresh = discover_personas(bundled_persona_dir()) if bundled_persona_dir().exists() else []
+            return _show_main_menu(fresh, args, skip_intro=True)
+
         if action == "setup_guide":
             console.print()
             _provider_setup_guide(console, args)
@@ -643,6 +697,7 @@ def _build_main_menu_actions(
         ("new_chat", MenuItem(t("new_chat", lang), t("new_chat_desc", lang), icon="💬")),
         ("chat_rooms", MenuItem(f"{t('chat_rooms', lang)} ({room_count})", t("chat_rooms_desc", lang), icon="💌")),
         ("persona_studio", MenuItem(t("persona_studio", lang), t("persona_studio_desc", lang), icon="✨")),
+        ("usage_guide", MenuItem(t("usage_guide", lang), t("usage_guide_desc", lang), icon="📘")),
     ]
     if _provider_needs_setup(args):
         actions.append(
@@ -691,6 +746,36 @@ def _provider_setup_guide(console: "Console", args: argparse.Namespace) -> None:
         title="[bold bright_cyan]  Setup Guide  [/bold bright_cyan]",
         border_style="bright_cyan",
         width=72,
+        padding=(0, 1),
+    )))
+    try:
+        from .wide_input import wide_input
+        wide_input("  Press Enter to continue...")
+    except (EOFError, KeyboardInterrupt):
+        pass
+
+
+def _show_usage_guide(console: "Console", args: argparse.Namespace) -> None:  # type: ignore[name-defined]
+    from rich.align import Align
+    from rich.panel import Panel
+    from rich.text import Text
+
+    body = Text.assemble(
+        ("\n  Quick start\n\n", "bold bright_magenta"),
+        ("  • ", "white"), ("mygf", "bold magenta"), (" → fastest way to launch\n", "white"),
+        ("  • New Chat → pick a persona and start talking\n", "white"),
+        ("  • Persona Studio → build your own persona harness\n", "white"),
+        ("  • Settings → provider, language, API keys\n", "white"),
+        ("  • /advice → see coach feedback during chat\n", "white"),
+        ("  • /back → return to the main menu\n\n", "white"),
+        ("  Release updates are checked on startup.\n", "dim"),
+        ("  New versions update only when you explicitly say yes.\n", "dim"),
+    )
+    console.print(Align.center(Panel(
+        body,
+        title="[bold bright_magenta]  Usage Guide  [/bold bright_magenta]",
+        border_style="bright_magenta",
+        width=78,
         padding=(0, 1),
     )))
     try:

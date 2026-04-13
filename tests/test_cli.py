@@ -177,6 +177,7 @@ def test_build_main_menu_actions_shows_setup_guide_when_provider_needs_setup(mon
     actions = cli._build_main_menu_actions(0, args, "en")
 
     assert any(action == "setup_guide" for action, _item in actions)
+    assert any(action == "usage_guide" for action, _item in actions)
 
 
 def test_build_main_menu_actions_hides_setup_guide_when_provider_is_configured(monkeypatch) -> None:
@@ -186,3 +187,4 @@ def test_build_main_menu_actions_hides_setup_guide_when_provider_is_configured(m
     actions = cli._build_main_menu_actions(0, args, "en")
 
     assert all(action != "setup_guide" for action, _item in actions)
+    assert any(action == "usage_guide" for action, _item in actions)

@@ -136,3 +136,14 @@ def test_show_main_menu_returns_selected_chat_room(monkeypatch, tmp_path: Path) 
     result = cli._show_main_menu([persona_path], args, skip_intro=True)
 
     assert result == (args, resolve_persona_path(persona_path), resume_path)
+
+
+def test_build_logo_rows_adds_shadow_layers() -> None:
+    rows = cli._build_logo_rows()
+
+    plain_rows = [row.plain for row in rows]
+
+    assert "♡ terminal romance simulator ♡" in plain_rows
+    assert " ♡ terminal romance simulator ♡" in plain_rows
+    assert any("_   _" in row for row in plain_rows)
+    assert any("'####:" in row for row in plain_rows)

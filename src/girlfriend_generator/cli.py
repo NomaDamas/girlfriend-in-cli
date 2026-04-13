@@ -271,20 +271,25 @@ _NERD_FRAMES = [
     "(✧ᴗ✧) ♡  Compiling feelings... 100%!",
 ]
 
-_LOGO_LINES = [
-    " _____ _      _  __      _                _ ",
-    "|  __ (_)    | |/ _|    (_)              | |",
-    "| |  \\/_ _ __| | |_ _ __ _  ___ _ __   __| |",
-    "| | __| | '__| |  _| '__| |/ _ \\ '_ \\ / _` |",
-    "| |_\\ \\ | |  | | | | |  | |  __/ | | | (_| |",
-    " \\____/_|_|  |_|_| |_|  |_|\\___|_| |_|\\__,_|",
-    "",
-    "           _         ___  _     ___ ",
-    "          (_)       / __\\| |   |_ _|",
-    "           _ _ __  | |   | |    | | ",
-    "          | | '_ \\ | |   | |    | | ",
-    "          | | | | | | |__ | |___ | | ",
-    "          |_|_| |_|  \\___/|_____|___|",
+_GIRLFRIEND_LOGO_LINES = [
+    "               _   _                             ",
+    "     o        | | | |       o                 |  ",
+    " __,     ,_   | | | |  ,_       _   _  _    __|  ",
+    "/  | |  /  |  |/  |/  /  |  |  |/  / |/ |  /  |  ",
+    "\\_/|/|_/   |_/|__/|__/   |_/|_/|__/  |  |_/\\_/|_/",
+    "  /|              |\\                             ",
+    "  \\|              |/                             ",
+]
+
+_IN_CLI_LOGO_LINES = [
+    "'####:'##::: ##:::::'######::'##:::::::'####:",
+    ". ##:: ###:: ##::::'##... ##: ##:::::::. ##::",
+    ": ##:: ####: ##:::: ##:::..:: ##:::::::: ##::",
+    ": ##:: ## ## ##:::: ##::::::: ##:::::::: ##::",
+    ": ##:: ##. ####:::: ##::::::: ##:::::::: ##::",
+    ": ##:: ##:. ###:::: ##::: ##: ##:::::::: ##::",
+    "'####: ##::. ##::::. ######:: ########:'####:",
+    "....::..::::..::::::......:::........::....::",
 ]
 
 _MODE_ICONS = {
@@ -299,14 +304,48 @@ _PERF_ICONS = {
 }
 
 
+def _build_logo_rows() -> list["Text"]:  # type: ignore[name-defined]
+    from rich.text import Text
+
+    face_colors = [
+        "#ff7eb6",
+        "#ff75c3",
+        "#ff6ad5",
+        "#e96dff",
+        "#bf7bff",
+        "#8b8cff",
+        "#5ea6ff",
+        "#4fc3ff",
+    ]
+    shadow_color = "#4a214f"
+    caption_face = "#ffd6ec"
+
+    rows: list[Text] = []
+    for index, line in enumerate(_GIRLFRIEND_LOGO_LINES):
+        rows.append(Text(f"  {line}", style=f"bold {shadow_color}"))
+        rows.append(Text(line, style=f"bold {face_colors[index % len(face_colors)]}"))
+
+    rows.append(Text())
+    for index, line in enumerate(_IN_CLI_LOGO_LINES):
+        color = face_colors[(index + 2) % len(face_colors)]
+        rows.append(Text(f" {line}", style=f"bold {shadow_color}"))
+        rows.append(Text(line, style=f"bold {color}"))
+
+    title = "♡ terminal romance simulator ♡"
+    rows.append(Text())
+    rows.append(Text(f" {title}", style=f"bold {shadow_color}"))
+    rows.append(Text(title, style=f"bold italic {caption_face}"))
+    rows.append(Text(" v0.1.0", style="grey35"))
+    rows.append(Text("v0.1.0", style="bold #d7c3ff"))
+    return rows
+
+
 def _play_intro(console: "Console") -> None:  # type: ignore[name-defined]
     """Play the nerd animation intro."""
     import time
     from rich.align import Align
-    from rich.panel import Panel
     from rich.text import Text
 
-    w = console.size.width
     for frame_text in _NERD_FRAMES:
         console.clear()
         console.print()
@@ -318,11 +357,9 @@ def _play_intro(console: "Console") -> None:  # type: ignore[name-defined]
     # Final logo reveal
     console.clear()
     console.print()
-    for line in _LOGO_LINES:
-        console.print(Align.center(Text(line, style="bold bright_magenta")))
+    for row in _build_logo_rows():
+        console.print(Align.center(row))
         time.sleep(0.08)
-    console.print()
-    console.print(Align.center(Text("♡ terminal romance simulator ♡", style="dim italic")))
     time.sleep(0.5)
 
 
@@ -397,11 +434,7 @@ def _show_main_menu(
         console.clear()
 
     # Centered logo block
-    logo_rows = [Text(line, style="bold bright_magenta") for line in _LOGO_LINES]
-    logo_rows.append(Text())
-    logo_rows.append(Text("♡ terminal romance simulator ♡", style="dim italic"))
-    logo_rows.append(Text(f"v0.1.0", style="dim"))
-    logo_group = Group(*[Align.center(r) for r in logo_rows])
+    logo_group = Group(*[Align.center(r) for r in _build_logo_rows()])
     console.print(Panel(logo_group, border_style="bright_magenta", padding=(1, 1)))
 
     # Settings bar — centered

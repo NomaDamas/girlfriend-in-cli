@@ -34,8 +34,16 @@ class HeuristicProvider:
         user_text: str,
         affection_score: int,
         mood: MoodType = "neutral",
-        **_: Any,
+        **kwargs: Any,
     ) -> ProviderReply:
+        language = _resolve_language(kwargs.get("language"))
+        if language != "ko":
+            text = self._generate_non_korean_reply(persona, affection_score, mood, language)
+            return ProviderReply(
+                text=text,
+                typing_seconds=self._typing_seconds(persona, text),
+                trace_note=f"{self.performance_mode}-heuristic:{language} mood={mood}",
+            )
         lower = user_text.lower()
         # Pick 1-2 parts for a natural, short reply
         parts: list[str] = []
@@ -63,10 +71,56 @@ class HeuristicProvider:
         persona: Persona,
         history: list[ChatMessage],
         affection_score: int,
+        **kwargs: Any,
     ) -> str:
+        language = _resolve_language(kwargs.get("language"))
+        if language != "ko":
+            return _localized_initiative(persona.name, language)
         return self.rng.choice(
             persona.initiative_profile.opener_templates or [persona.greeting]
         )
+
+    def generate_nudge(
+        self,
+        persona: Persona,
+        history: list[ChatMessage],
+        affection_score: int,
+        **kwargs: Any,
+    ) -> str:
+        language = _resolve_language(kwargs.get("language"))
+        if language != "ko":
+            return _localized_nudge(persona.name, language)
+        return self.rng.choice(persona.nudge_policy.templates)
+
+    def _generate_non_korean_reply(
+        self,
+        persona: Persona,
+        affection_score: int,
+        mood: MoodType,
+        language: str,
+    ) -> str:
+        options = {
+            "en": [
+                "oh really? tell me more",
+                "haha wait that's actually cute",
+                "mm okay I'm listening",
+                "you've got my attention now",
+            ],
+            "ja": [
+                "え、ほんとに？ もう少し聞かせて",
+                "なんかちょっとかわいいかも",
+                "うん、ちゃんと聞いてるよ",
+                "それちょっと気になる",
+            ],
+            "zh": [
+                "诶 真的假的 继续说说",
+                "这个有点可爱欸",
+                "嗯 我在认真听",
+                "好像开始有点在意你了",
+            ],
+        }
+        pool = options.get(language, options["en"])
+        return self.rng.choice(pool)
 
     def _typing_seconds(self, persona: Persona, text: str) -> float:
         if self.performance_mode == "turbo":
@@ -461,6 +515,24 @@ def _resolve_language(language: str | None) -> str:
         return language
     from .i18n import get_language
     return get_language()
+
+
+def _localized_initiative(name: str, language: str) -> str:
+    mapping = {
+        "en": f"hey, it's {name}. what are you up to?",
+        "ja": f"ねえ、{name}だよ。今なにしてるの？",
+        "zh": f"喂，我是{name}。你现在在干嘛？",
+    }
+    return mapping.get(language, mapping["en"])
+
+
+def _localized_nudge(name: str, language: str) -> str:
+    mapping = {
+        "en": "hey... did you just leave me on read?",
+        "ja": "ねえ…既読だけして消えた？",
+        "zh": "喂……你该不会已读不回吧？",
+    }
+    return mapping.get(language, mapping["en"])
 
 
 def _build_system_prompt(

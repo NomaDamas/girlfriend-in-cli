@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
 from .models import ChatMessage, MoodState, MoodType, Persona, TickResult
+from .i18n import get_language
 
 _CHARM_TYPE_EMOJI = {
     "playful": "😜",
@@ -60,7 +61,7 @@ class ConversationSession:
 
     def bootstrap(self, now: datetime | None = None) -> None:
         now = now or utc_now()
-        self.add_assistant_message(self.persona.greeting, now=now, schedule_nudge=True)
+        self.add_assistant_message(self._localized_greeting(), now=now, schedule_nudge=True)
         self.schedule_initiative(now)
 
     def add_user_message(self, text: str, now: datetime | None = None) -> None:
@@ -289,6 +290,17 @@ class ConversationSession:
             "battle_metric_defs": _BATTLE_METRICS,
             "charm_type_emoji": _CHARM_TYPE_EMOJI.get(self.last_coach_charm_type.lower(), "✨") if self.last_coach_charm_type else "✨",
         }
+
+    def _localized_greeting(self) -> str:
+        language = get_language()
+        if language == "ko":
+            return self.persona.greeting
+        mapping = {
+            "en": f"hey, it's {self.persona.name}. wanted to text you first",
+            "ja": f"ねえ、{self.persona.name}だよ。先に連絡してみた",
+            "zh": f"喂，我是{self.persona.name}。我先来找你聊天了",
+        }
+        return mapping.get(language, mapping["en"])
 
     def tick(self, provider: object, now: datetime | None = None) -> TickResult:
         now = now or utc_now()

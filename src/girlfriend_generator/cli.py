@@ -617,12 +617,15 @@ def _show_main_menu(
     )
     console.print(Align.center(status))
 
+    from .i18n import t, get_language
+    lang = get_language()
+
     # Check API key
     import os as _os
     has_key = bool(_os.environ.get("OPENAI_API_KEY")) or bool(_os.environ.get("ANTHROPIC_API_KEY"))
     if not has_key:
         console.print(Align.center(Text(
-            "⚠ LLM setup needed. Open Settings > API Keys. ChatGPT login-only OAuth is not available here yet.",
+            t("llm_setup_needed", lang),
             style="bold yellow",
         )))
     console.print()
@@ -630,9 +633,6 @@ def _show_main_menu(
     # Count chat rooms
     session_dir = bundled_session_dir()
     room_count = len(list(session_dir.glob("*.json"))) if session_dir.exists() else 0
-
-    from .i18n import t, get_language
-    lang = get_language()
 
     actions = _build_main_menu_actions(room_count, args, lang)
     menu_items = [item for _action, item in actions]
@@ -646,12 +646,12 @@ def _show_main_menu(
         )
 
         if choice is None:
-            console.print("\n  [dim]Goodbye.[/dim]")
+            console.print(f"\n  [dim]{t('goodbye', lang)}[/dim]")
             return None
 
         action = actions[choice][0]
         if action == "quit":
-            console.print("\n  [dim]Goodbye.[/dim]")
+            console.print(f"\n  [dim]{t('goodbye', lang)}[/dim]")
             return None
 
         if action == "new_chat":
@@ -787,6 +787,8 @@ def _show_usage_guide(console: "Console", args: argparse.Namespace) -> None:  # 
     from rich.align import Align
     from rich.panel import Panel
     from rich.text import Text
+    from .i18n import get_language, t
+    lang = get_language()
 
     body = Text.assemble(
         ("\n  Quick start\n\n", "bold bright_magenta"),
@@ -794,8 +796,8 @@ def _show_usage_guide(console: "Console", args: argparse.Namespace) -> None:  # 
         ("  • New Chat → pick a persona and start talking\n", "white"),
         ("  • Persona Studio → build your own persona harness\n", "white"),
         ("  • Settings → provider, language, API keys\n", "white"),
-        ("  • OpenAI keys: ", "white"), ("platform.openai.com/api-keys\n", "green"),
-        ("  • Anthropic keys: ", "white"), ("console.anthropic.com/settings/keys\n", "green"),
+        (f"  • {t('usage_keys_openai', lang)}: ", "white"), ("platform.openai.com/api-keys\n", "green"),
+        (f"  • {t('usage_keys_anthropic', lang)}: ", "white"), ("console.anthropic.com/settings/keys\n", "green"),
         ("  • /advice → see coach feedback during chat\n", "white"),
         ("  • /back → return to the main menu\n\n", "white"),
         ("  Release updates are checked on startup.\n", "dim"),

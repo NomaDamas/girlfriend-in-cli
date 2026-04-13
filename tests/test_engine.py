@@ -85,3 +85,15 @@ def test_openai_provider_is_default() -> None:
     from girlfriend_generator.providers import build_provider, ProviderConfig, OpenAIProvider
     provider = build_provider(ProviderConfig(name="openai"))
     assert isinstance(provider, OpenAIProvider)
+
+
+def test_bootstrap_greeting_uses_configured_language(monkeypatch) -> None:
+    persona = load_persona(Path("personas/wonyoung-idol.json"))
+    session = ConversationSession(persona=persona)
+    start = utc_now()
+    monkeypatch.setattr("girlfriend_generator.engine.get_language", lambda: "en")
+
+    session.bootstrap(now=start)
+
+    assert session.messages[0].role == "assistant"
+    assert "wanted to text you first" in session.messages[0].text

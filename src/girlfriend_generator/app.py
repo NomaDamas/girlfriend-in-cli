@@ -21,6 +21,7 @@ from rich.table import Table
 from rich.text import Text
 
 from .engine import ConversationSession, utc_now
+from .i18n import get_language, t
 from .models import MOOD_EMOJI, ChatMessage, Persona, ProviderReply, RuntimeTrace
 from .personas import load_persona
 from .providers import ProviderConfig, build_provider
@@ -177,7 +178,7 @@ def run_chat_app(config: AppConfig) -> int:
         session.bootstrap()
 
     draft = ""
-    status_line = "Enter로 메시지 입력"
+    status_line = t("prompt_message_input")
     pending_job: BackgroundJob | None = None
     pending_delivery: PendingDelivery | None = None
     last_key_at = time.monotonic()
@@ -1041,10 +1042,11 @@ def _handle_command(
     music_player: Any = None,
 ) -> dict[str, Any]:
     lowered = text.lower()
+    lang = get_language()
     if lowered == "/quit":
         return {
             "draft": "",
-            "status_line": "Session closed.",
+            "status_line": t("status_session_closed", lang),
             "pending_job": pending_job,
             "show_trace": show_trace,
             "voice_output_enabled": voice_output_enabled,
@@ -1066,7 +1068,7 @@ def _handle_command(
     if lowered == "/back":
         return {
             "draft": "",
-            "status_line": "Back to main menu.",
+            "status_line": t("status_back_to_menu", lang),
             "pending_job": pending_job,
             "show_trace": show_trace,
             "voice_output_enabled": voice_output_enabled,
@@ -1079,7 +1081,7 @@ def _handle_command(
         )
         return {
             "draft": "",
-            "status_line": "Help opened in chat.",
+            "status_line": t("status_help_opened", lang),
             "pending_job": pending_job,
             "show_trace": show_trace,
             "voice_output_enabled": voice_output_enabled,
@@ -1088,7 +1090,7 @@ def _handle_command(
     if lowered == "/trace":
         return {
             "draft": "",
-            "status_line": "Trace panel toggled.",
+            "status_line": t("status_trace_toggled", lang),
             "pending_job": pending_job,
             "show_trace": not show_trace,
             "voice_output_enabled": voice_output_enabled,
@@ -1103,7 +1105,7 @@ def _handle_command(
         )
         return {
             "draft": "",
-            "status_line": "Session status posted.",
+            "status_line": t("status_session_posted", lang),
             "pending_job": pending_job,
             "show_trace": show_trace,
             "voice_output_enabled": voice_output_enabled,
@@ -1112,7 +1114,7 @@ def _handle_command(
     if lowered == "/strategy" or lowered == "/discuss":
         return {
             "draft": "",
-            "status_line": "Strategy discussion...",
+            "status_line": t("status_strategy", lang),
             "pending_job": pending_job,
             "show_trace": show_trace,
             "voice_output_enabled": voice_output_enabled,
@@ -1132,7 +1134,7 @@ def _handle_command(
         )
         return {
             "draft": "",
-            "status_line": "Coach advice posted.",
+            "status_line": t("status_coach_posted", lang),
             "pending_job": pending_job,
             "show_trace": show_trace,
             "voice_output_enabled": voice_output_enabled,
@@ -1191,7 +1193,7 @@ def _handle_command(
         session.add_system_message("\n".join(lines))
         return {
             "draft": "",
-            "status_line": "Battle power posted.",
+            "status_line": t("status_battle_power", lang),
             "pending_job": pending_job,
             "show_trace": show_trace,
             "voice_output_enabled": voice_output_enabled,
@@ -1421,7 +1423,7 @@ def _render_chat(console: Console, session: ConversationSession, assistant_typin
         ))
     if not blocks:
         blocks.append(Align.center(
-            Text("\n  Start the conversation...\n", style="dim italic")
+            Text(f"\n  {t('start_conversation')}\n", style="dim italic")
         ))
     scroll_hint = f"[dim] ↑{scroll_offset} older messages [/dim]" if scroll_offset > 0 else ""
     return Panel(Group(*blocks), border_style="grey37", padding=(0, 0), subtitle=scroll_hint)

@@ -2,7 +2,7 @@ import types
 from pathlib import Path
 
 from girlfriend_generator.personas import load_persona
-from girlfriend_generator.providers import AnthropicProvider, OpenAIProvider
+from girlfriend_generator.providers import AnthropicProvider, OpenAIProvider, HeuristicProvider
 
 
 def _load_test_persona():
@@ -78,3 +78,18 @@ def test_anthropic_provider_uses_saved_language_when_none_is_passed(
 
     assert reply.text == "やあ"
     assert captured["prompt_kwargs"]["language"] == "ja"
+
+
+def test_heuristic_provider_respects_non_korean_language() -> None:
+    persona = _load_test_persona()
+    provider = HeuristicProvider()
+
+    reply = provider.generate_reply(
+        persona=persona,
+        history=[],
+        user_text="hi",
+        affection_score=50,
+        language="en",
+    )
+
+    assert any(token in reply.text.lower() for token in ["really", "cute", "listening", "attention"])

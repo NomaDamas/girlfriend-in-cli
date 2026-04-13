@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 from girlfriend_generator import cli
+from girlfriend_generator.i18n import get_language
 from girlfriend_generator.paths import bundled_persona_dir, project_root, resolve_persona_path
 
 
@@ -198,7 +199,7 @@ def test_build_logo_rows_keeps_title_swappable() -> None:
     plain_rows = [row.plain for row in rows]
 
     assert any("♡ terminal romance simulator ♡" in row for row in plain_rows)
-    assert any("v0.1.3.2" in row for row in plain_rows)
+    assert any("v0.1.3.3" in row for row in plain_rows)
 
 
 def test_build_main_menu_actions_shows_setup_guide_when_provider_needs_setup(monkeypatch) -> None:
@@ -219,6 +220,12 @@ def test_build_main_menu_actions_hides_setup_guide_when_provider_is_configured(m
 
     assert all(action != "setup_guide" for action, _item in actions)
     assert any(action == "usage_guide" for action, _item in actions)
+
+
+def test_default_language_is_english(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr("girlfriend_generator.i18n._PREFS_PATH", tmp_path / "prefs.json")
+
+    assert get_language() == "en"
 
 
 def test_show_star_popup_treats_enter_as_yes(monkeypatch, tmp_path: Path) -> None:

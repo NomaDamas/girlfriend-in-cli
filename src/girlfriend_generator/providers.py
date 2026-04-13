@@ -289,6 +289,9 @@ class OpenAIProvider:
             coach_feedback=str(parsed.get("user_feedback", "")),
             coach_strength=str(parsed.get("user_strength", "")),
             coach_weakness=str(parsed.get("user_weakness", "")),
+            coach_charm_point=str(parsed.get("user_charm_point", "")),
+            coach_charm_type=str(parsed.get("user_charm_type", "")),
+            coach_charm_feedback=str(parsed.get("user_charm_feedback", "")),
             should_burst=bool(parsed.get("should_burst", False)),
             burst_messages=burst_list,
             next_proactive_seconds=proactive_s,
@@ -400,6 +403,9 @@ class AnthropicProvider:
             coach_feedback=str(parsed.get("user_feedback", "")),
             coach_strength=str(parsed.get("user_strength", "")),
             coach_weakness=str(parsed.get("user_weakness", "")),
+            coach_charm_point=str(parsed.get("user_charm_point", "")),
+            coach_charm_type=str(parsed.get("user_charm_type", "")),
+            coach_charm_feedback=str(parsed.get("user_charm_feedback", "")),
         )
 
     def generate_initiative(
@@ -545,6 +551,9 @@ def _build_system_prompt(
         '  "internal_thought": "your private feeling right now (Korean, 1 sentence)",\n'
         '  "user_strength": "what the user did well in their last message (Korean, 1 short sentence)",\n'
         '  "user_weakness": "what the user did poorly in their last message (Korean, 1 short sentence)",\n'
+        '  "user_charm_point": "the user\'s most attractive point in this message (Korean, 1 short sentence)",\n'
+        '  "user_charm_type": "a short charm category like playful, warm, bold, thoughtful, flirty, steady",\n'
+        '  "user_charm_feedback": "why that charm works or fails emotionally (Korean, 1 sentence)",\n'
         '  "user_feedback": "As a SHARP, BRUTALLY HONEST dating coach, critique the user last message. '
         "MUST include: (1) what is specifically wrong with their exact words, "
         "(2) a CONCRETE REWRITE — quote the actual better Korean line they should have sent, "
@@ -650,5 +659,8 @@ def parse_llm_json_response(text: str) -> dict:
             "internal_thought": "",
             "user_strength": "",
             "user_weakness": "",
+            "user_charm_point": "",
+            "user_charm_type": "",
+            "user_charm_feedback": "",
             "user_feedback": "",
         }

@@ -122,6 +122,9 @@ class ProviderReply:
     coach_feedback: str = ""
     coach_strength: str = ""
     coach_weakness: str = ""
+    coach_charm_point: str = ""
+    coach_charm_type: str = ""
+    coach_charm_feedback: str = ""
     should_burst: bool = False
     burst_messages: list[str] = field(default_factory=list)
     next_proactive_seconds: int | None = None

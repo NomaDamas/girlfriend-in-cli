@@ -675,6 +675,9 @@ def _show_ending(
         '  "highlights": ["key moment 1", "key moment 2", "key moment 3"],\n'
         '  "user_strength": "what the user did well across the chat (1 sentence)",\n'
         '  "user_weakness": "what the user consistently did poorly across the chat (1 sentence)",\n'
+        '  "user_charm_point": "the user\'s strongest attractive point across the chat (1 sentence)",\n'
+        '  "user_charm_type": "a short charm category like playful, warm, bold, thoughtful, flirty, steady",\n'
+        '  "user_charm_feedback": "why that charm worked or failed in the relationship (1 sentence)",\n'
         '  "what_went_wrong": "what the user did right or wrong (1-2 sentences)",\n'
         '  "rating": "S/A/B/C/D/F grade on their performance"\n'
         "}"
@@ -701,6 +704,9 @@ def _show_ending(
             "highlights": [],
             "user_strength": "",
             "user_weakness": "",
+            "user_charm_point": "",
+            "user_charm_type": "",
+            "user_charm_feedback": "",
             "what_went_wrong": "",
             "rating": "?",
         }
@@ -732,6 +738,21 @@ def _show_ending(
         lines.append(Text.assemble(
             ("\n  Weakness:  ", "bold red"),
             (f"{data.get('user_weakness', '')}\n", "red"),
+        ))
+    if data.get("user_charm_point"):
+        lines.append(Text.assemble(
+            ("\n  Charm Point:  ", "bold magenta"),
+            (f"{data.get('user_charm_point', '')}\n", "magenta"),
+        ))
+    if data.get("user_charm_type"):
+        lines.append(Text.assemble(
+            ("\n  Charm Type:  ", "bold bright_magenta"),
+            (f"{data.get('user_charm_type', '')}\n", "bright_magenta"),
+        ))
+    if data.get("user_charm_feedback"):
+        lines.append(Text.assemble(
+            ("\n  Charm Feedback:  ", "bold bright_cyan"),
+            (f"{data.get('user_charm_feedback', '')}\n", "cyan"),
         ))
     lines.append(Text.assemble(
         ("\n  ", ""),
@@ -809,6 +830,9 @@ def _finish_job(
         session.last_coach_feedback = reply.coach_feedback
         session.last_coach_strength = reply.coach_strength
         session.last_coach_weakness = reply.coach_weakness
+        session.last_coach_charm_point = reply.coach_charm_point
+        session.last_coach_charm_type = reply.coach_charm_type
+        session.last_coach_charm_feedback = reply.coach_charm_feedback
         session.last_internal_thought = reply.internal_thought
         # LLM-decided proactive follow-up scheduling
         if reply.next_proactive_seconds and reply.next_proactive_seconds > 0:
@@ -1100,8 +1124,11 @@ def _handle_command(
         feedback = session.last_coach_feedback or "아직 조언이 없어요. 메시지를 보내보세요!"
         strength = session.last_coach_strength or "아직 강점 분석이 없어요."
         weakness = session.last_coach_weakness or "아직 약점 분석이 없어요."
+        charm_point = session.last_coach_charm_point or "아직 매력 포인트 분석이 없어요."
+        charm_type = session.last_coach_charm_type or "unknown"
+        charm_feedback = session.last_coach_charm_feedback or "아직 매력 피드백이 없어요."
         session.add_system_message(
-            f"💡 Coach\n✓ Strength: {strength}\n✗ Weakness: {weakness}\n→ Advice: {feedback}"
+            f"💡 Coach\n✓ Strength: {strength}\n✗ Weakness: {weakness}\n♥ Charm Point: {charm_point}\n♥ Charm Type: {charm_type}\n♥ Charm Feedback: {charm_feedback}\n→ Advice: {feedback}"
         )
         return {
             "draft": "",
@@ -1501,7 +1528,14 @@ def _render_trace(trace: RuntimeTrace, persona: Persona, session: ConversationSe
             border_style="magenta",
             padding=(0, 1),
         ))
-    if session.last_coach_feedback:
+    if (
+        session.last_coach_feedback
+        or session.last_coach_strength
+        or session.last_coach_weakness
+        or session.last_coach_charm_point
+        or session.last_coach_charm_type
+        or session.last_coach_charm_feedback
+    ):
         coach_lines = []
         if session.last_coach_strength:
             coach_lines.append(Text.assemble(
@@ -1512,6 +1546,21 @@ def _render_trace(trace: RuntimeTrace, persona: Persona, session: ConversationSe
             coach_lines.append(Text.assemble(
                 ("✗ Weakness  ", "bold red"),
                 (session.last_coach_weakness[:80], "red"),
+            ))
+        if session.last_coach_charm_point:
+            coach_lines.append(Text.assemble(
+                ("♥ Charm Point  ", "bold magenta"),
+                (session.last_coach_charm_point[:80], "magenta"),
+            ))
+        if session.last_coach_charm_type:
+            coach_lines.append(Text.assemble(
+                ("♥ Charm Type  ", "bold bright_magenta"),
+                (session.last_coach_charm_type[:80], "bright_magenta"),
+            ))
+        if session.last_coach_charm_feedback:
+            coach_lines.append(Text.assemble(
+                ("♥ Charm Feedback  ", "bold cyan"),
+                (session.last_coach_charm_feedback[:120], "cyan"),
             ))
         coach_lines.append(Text.assemble(
             ("→ Advice  ", "bold cyan"),

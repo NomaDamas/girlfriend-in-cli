@@ -27,6 +27,9 @@ class ConversationSession:
     last_coach_feedback: str = ""
     last_coach_strength: str = ""
     last_coach_weakness: str = ""
+    last_coach_charm_point: str = ""
+    last_coach_charm_type: str = ""
+    last_coach_charm_feedback: str = ""
     last_internal_thought: str = ""
     ended: bool = False
     proactive_due_at: datetime | None = None  # LLM-decided proactive message time

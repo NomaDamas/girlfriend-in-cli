@@ -228,6 +228,29 @@ def test_render_trace_shows_coach_strength_and_weakness() -> None:
     assert "질문이 너무 평면적임" in rendered
 
 
+def test_render_trace_shows_charm_feedback() -> None:
+    persona = _load_test_persona()
+    session = ConversationSession(persona=persona)
+    session.bootstrap()
+    session.last_coach_charm_point = "장난기 있는 리듬감"
+    session.last_coach_charm_type = "playful"
+    session.last_coach_charm_feedback = "가볍게 툭 던지는 톤이 매력으로 작동함"
+    trace = RuntimeTrace(
+        persona_path=Path("personas/wonyoung-idol.json"),
+        provider_name="heuristic",
+        provider_model=None,
+        performance_mode="turbo",
+        voice_output_name="off",
+        voice_input_name="off",
+    )
+
+    rendered = _render_to_text(_render_trace(trace, persona, session))
+
+    assert "Charm" in rendered
+    assert "playful" in rendered
+    assert "장난기 있는 리듬감" in rendered
+
+
 def test_sync_provider_trace_exposes_remote_metadata() -> None:
     trace = RuntimeTrace(
         persona_path=Path("personas/wonyoung-idol.json"),
@@ -568,3 +591,33 @@ def test_show_ending_renders_strength_and_weakness(monkeypatch) -> None:
     assert "Weakness" in rendered
     assert "기억을 살린 질문" in rendered
     assert "너무 짧은 단답" in rendered
+
+
+def test_show_ending_renders_charm_fields(monkeypatch) -> None:
+    persona = _load_test_persona()
+    session = ConversationSession(persona=persona)
+    session.bootstrap()
+
+    class _DummyLive:
+        def stop(self):
+            return None
+
+    class _DummyProvider:
+        def generate_reply(self, *args, **kwargs):
+            return ProviderReply(
+                text='{"persona_final_words":"bye","ending_narrative":"end","report_title":"END","highlights":[],"user_strength":"기억을 살린 질문","user_weakness":"너무 짧은 단답","user_charm_point":"자연스러운 장난기","user_charm_type":"playful","user_charm_feedback":"가볍고 부담 없는 농담이 호감을 만든다","what_went_wrong":"톤이 아쉬웠다","rating":"B"}',
+                typing_seconds=0.1,
+                trace_note="",
+            )
+
+    monkeypatch.setattr("girlfriend_generator.i18n.get_language", lambda: "ko")
+    monkeypatch.setattr("girlfriend_generator.wide_input.wide_input", lambda _prompt="": "")
+    console = Console(record=True, width=120)
+
+    _show_ending(_DummyLive(), console, persona, session, "success", _DummyProvider())
+
+    rendered = console.export_text()
+    assert "Charm Point" in rendered
+    assert "Charm Type" in rendered
+    assert "자연스러운 장난기" in rendered
+    assert "playful" in rendered

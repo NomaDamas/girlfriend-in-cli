@@ -1,0 +1,46 @@
+name: update-homebrew-tap
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  update-tap:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set variables
+        id: vars
+        run: |
+          echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Download release tarball
+        run: |
+          curl -L "https://github.com/NomaDamas/girlfriend-in-cli/archive/refs/tags/${GITHUB_REF_NAME}.tar.gz" -o release.tar.gz
+          echo "SHA256=$(sha256sum release.tar.gz | awk '{print $1}')" >> "$GITHUB_ENV"
+
+      - name: Generate formula
+        run: |
+          python3 scripts/render_homebrew_formula.py \
+            --tag "${GITHUB_REF_NAME}" \
+            --sha256 "${SHA256}" \
+            --output Formula/girlfriend-in-cli.rb
+
+      - name: Push to tap repo
+        env:
+          TAP_PUSH_TOKEN: ${{ secrets.HOMEBREW_TAP_PUSH_TOKEN }}
+        run: |
+          test -n "$TAP_PUSH_TOKEN"
+          git clone "https://x-access-token:${TAP_PUSH_TOKEN}@github.com/NomaDamas/brew-girlfriend-in-cli.git" tap-repo
+          mkdir -p tap-repo/Formula
+          cp Formula/girlfriend-in-cli.rb tap-repo/Formula/girlfriend-in-cli.rb
+          cd tap-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/girlfriend-in-cli.rb
+          git commit -m "chore: update formula for ${GITHUB_REF_NAME}" || exit 0
+          git push origin main

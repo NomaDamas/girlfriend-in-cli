@@ -108,6 +108,9 @@ girlfriend-generator
 
 This is the easiest path for most users.
 
+> Note: true bare `brew install girlfriend-in-cli` for a fresh machine would require acceptance into `homebrew/core`.  
+> Right now the project ships through a public custom tap, which is the realistic path at this stage.
+
 ### Option B — install from source
 From the repository root:
 
@@ -143,6 +146,7 @@ On startup, the app can check the latest **stable GitHub Release** and prompt be
 - ✅ checks releases, not random commits on `main`
 - ✅ only updates when you explicitly say yes
 - ✅ supports safe upgrade flows for release installs
+- ✅ updates the Homebrew tap formula automatically on release publish
 - ✅ designed to protect users from unstable in-between pushes
 
 ---

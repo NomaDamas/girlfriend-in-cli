@@ -459,6 +459,31 @@ _ONBOARDING_FLAG_PATH = Path.home() / ".girlfriend-in-cli" / "onboarding_seen"
 _GITHUB_REPO = "NomaDamas/girlfriend-in-cli"
 
 
+def _star_repo_with_gh() -> bool:
+    import shutil
+    import subprocess
+
+    if shutil.which("gh") is None:
+        return False
+
+    auth = subprocess.run(
+        ["gh", "auth", "status"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if auth.returncode != 0:
+        return False
+
+    star = subprocess.run(
+        ["gh", "api", "-X", "PUT", f"/user/starred/{_GITHUB_REPO}"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return star.returncode == 0
+
+
 def _show_star_popup(console: "Console") -> None:  # type: ignore[name-defined]
     """Show GitHub star request. Only stop showing after user says yes."""
     if _STAR_FLAG_PATH.exists():
@@ -495,12 +520,15 @@ def _show_star_popup(console: "Console") -> None:  # type: ignore[name-defined]
         answer = "n"
 
     if answer in ("", "y", "yes"):
-        url = f"https://github.com/{_GITHUB_REPO}"
-        try:
-            webbrowser.open(url)
-            console.print("  [green]Opened in browser. Thank you![/green]\n")
-        except Exception:
-            console.print(f"  [dim]Open: {url}[/dim]\n")
+        if _star_repo_with_gh():
+            console.print("  [green]Star added through GitHub CLI. Thank you![/green]\n")
+        else:
+            url = f"https://github.com/{_GITHUB_REPO}"
+            try:
+                webbrowser.open(url)
+                console.print("  [green]Opened in browser. Thank you![/green]\n")
+            except Exception:
+                console.print(f"  [dim]Open: {url}[/dim]\n")
         # Only mark as shown when user actually said yes
         _STAR_FLAG_PATH.parent.mkdir(parents=True, exist_ok=True)
         _STAR_FLAG_PATH.write_text("shown", encoding="utf-8")

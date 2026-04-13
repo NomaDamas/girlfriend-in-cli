@@ -196,10 +196,27 @@ def test_show_star_popup_treats_enter_as_yes(monkeypatch, tmp_path: Path) -> Non
 
     monkeypatch.setattr(cli, "_STAR_FLAG_PATH", flag_path)
     monkeypatch.setattr("girlfriend_generator.wide_input.wide_input", lambda _prompt="": "")
+    monkeypatch.setattr(cli, "_star_repo_with_gh", lambda: False)
     monkeypatch.setattr("webbrowser.open", lambda url: opened.setdefault("url", url))
 
     from rich.console import Console
     cli._show_star_popup(Console(record=True, width=120))
 
     assert opened["url"].endswith("NomaDamas/girlfriend-in-cli")
+    assert flag_path.exists()
+
+
+def test_show_star_popup_uses_github_cli_when_available(monkeypatch, tmp_path: Path) -> None:
+    flag_path = tmp_path / "star_shown"
+    opened = {}
+
+    monkeypatch.setattr(cli, "_STAR_FLAG_PATH", flag_path)
+    monkeypatch.setattr("girlfriend_generator.wide_input.wide_input", lambda _prompt="": "")
+    monkeypatch.setattr(cli, "_star_repo_with_gh", lambda: True)
+    monkeypatch.setattr("webbrowser.open", lambda url: opened.setdefault("url", url))
+
+    from rich.console import Console
+    cli._show_star_popup(Console(record=True, width=120))
+
+    assert opened == {}
     assert flag_path.exists()

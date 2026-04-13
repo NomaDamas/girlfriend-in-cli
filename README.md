@@ -1,117 +1,242 @@
-# Girlfriend Generator
+# girlfriend-in-cli
 
-`girlfriend-generator` is a terminal-only romance simulation chat designed for short vibe-coding breaks. It keeps the product boundary fixed to the CLI, renders chat bubbles with Rich, simulates typing indicators, sends idle nudges when the conversation stalls, and exposes an ECC trace panel so you can see which local Everything Claude Code assets are driving the session.
+**Wake up, nerds.**
 
-## What It Does
+**Your CLI boyfriend or girlfriend chats with you — sharpen your social skills and discover your charm.**
 
-- Runs a KakaoTalk-like chat flow in the terminal
-- Loads detailed adult personas from `personas/*.json`
-- Simulates assistant typing and follow-up nudges
-- Supports irregular first-message initiative instead of only reactive replies
-- Supports optional voice output on macOS via `say`
-- Supports optional voice input through a user-supplied transcription command
-- Shows a live `ECC Trace` panel with the active persona, provider, voice adapters, nudge and initiative timers, and local skill roots
+`girlfriend-in-cli` is a terminal-native romance simulator for the AI-native era: a weird, playful, and surprisingly sincere open-source project for vibe coders who spend too much time in the shell and not enough time practicing how to talk like a human.
 
-## Why It Uses ECC Locally
+This is not just a joke app.
 
-This repository vendors Everything Claude Code assets project-locally:
+It is built around a simple belief:
 
-- `AGENTS.md`
-- `.codex/AGENTS.md`
-- `.agents/skills/`
+> If developers are getting better at talking to models every day,  
+> they should also get better at talking to people.
 
-It does **not** modify `~/.codex/config.toml` or global Codex defaults.
+So yes:
 
-## Quickstart
+- code in the terminal
+- waste less Slack time
+- survive lonely vibe-coding sessions
+- practice warmth, timing, empathy, and charm
+- build your own persona harness and talk to the energy you want
 
-Fast local path from the repository root:
+**Don’t just grind code. Grind charm.**
+
+---
+
+## Why this exists
+
+Modern builders already live in the terminal.
+
+That means the terminal can become more than a place for:
+
+- shells
+- logs
+- tests
+- deployments
+
+It can also become a place to practice:
+
+- conversation flow
+- emotional timing
+- reading reactions
+- flirting without sounding robotic
+- becoming a slightly less socially dead T-type developer
+
+`girlfriend-in-cli` is for:
+
+- lonely vibe coders
+- terminal-first builders
+- developers who want to feel a little more human while they work
+- people who want to practice social instinct inside the same environment where they build
+
+---
+
+## What it does
+
+- Runs a terminal-only chat UI with Rich
+- Lets you chat with bundled boyfriend / girlfriend personas
+- Supports saved sessions and resume flow
+- Sends follow-up nudges if you leave the other side hanging
+- Supports voice output on macOS via `say`
+- Supports voice input through a custom transcription command
+- Includes a Persona Studio for importing, editing, and creating personas
+- Can auto-generate personas from a **name, link, or short prompt**
+- Supports remote persona compilation and hosting workflows
+- Exposes a live ECC trace/debug panel during runs
+
+---
+
+## The philosophy
+
+**Wake up, nerds.**
+
+The point of this project is not “fake romance.”
+
+The point is that the AI-native era should not produce developers who are only good at:
+
+- prompting models
+- shipping faster
+- writing more code
+
+It should also produce developers who are better at:
+
+- empathy
+- timing
+- tone
+- emotional calibration
+- making other people feel understood
+
+If you can train coding instincts in the terminal, maybe you can train social instincts there too.
+
+---
+
+## Quick Start
+
+From the repository root:
 
 ```bash
 bash scripts/bootstrap.sh
 source .venv/bin/activate
-girlfriend-generator --performance turbo
+girlfriend-generator
+```
+
+That gives you:
+
+- a local virtualenv
+- an editable install
+- the `girlfriend-generator` entrypoint
+- bundled persona discovery
+
+If you want to run tests:
+
+```bash
 python3 -m pytest
+```
+
+If you want a full smoke check:
+
+```bash
 bash scripts/smoke.sh
 ```
 
-That path keeps execution terminal-only, uses the low-latency local heuristic backend by default, and verifies the package entrypoint plus transcript/export behavior from the repository root.
+---
 
-## Install
+## First run
 
-Bootstrap a local editable environment from the repository root:
-
-```bash
-bash scripts/bootstrap.sh
-```
-
-That script prefers `python -m pip install --no-build-isolation -e ".[dev]"`, then falls back to `python setup.py develop` inside a `--system-site-packages` virtualenv when standards-based editable installs are blocked. The `--no-build-isolation` path avoids unnecessary network lookups for build dependencies and keeps setup local without touching `~/.codex`. After installation it also sanity-checks the terminal entrypoints with `girlfriend-generator --help`, `python -m girlfriend_generator --help`, and bundled persona discovery.
-
-On machines without local `wheel` support, the script skips straight to `python setup.py develop`, which is the verified offline-safe path in this repository.
-
-Manual runtime install from the repository root:
-
-```bash
-python3 -m venv --system-site-packages .venv
-source .venv/bin/activate
-python -m pip install --no-build-isolation -e .
-```
-
-If your environment does not have local `wheel` support, use the offline-safe fallback instead:
-
-```bash
-python setup.py develop
-```
-
-If you want the local verification stack in the same environment, install the dev extra:
-
-```bash
-python -m pip install --no-build-isolation -e ".[dev]"
-```
-
-If you choose a non-editable local install and still want persona lookup plus transcript export pinned to this repository, set:
-
-```bash
-export GIRLFRIEND_GENERATOR_ROOT=/absolute/path/to/girlfriend_generator
-```
-
-## Run
-
-Once installed, run the package entrypoint from anywhere:
+Launch the app:
 
 ```bash
 girlfriend-generator
 ```
 
-You can also use the installed module entrypoint from the same environment:
+When the main menu opens, you can:
+
+- start a new chat
+- resume an old session
+- open Persona Studio
+- change provider / language / performance settings
+
+If you want model-backed chat, set an API key first in your shell or via the in-app Settings menu.
+
+Examples:
 
 ```bash
-python3 -m girlfriend_generator --persona personas/han-seo-jin-crush.json
+export OPENAI_API_KEY=your_key_here
+girlfriend-generator
 ```
 
-If you want to pin a specific persona from outside the repository, pass an absolute path to the persona file.
+or
 
-Repo-relative persona paths such as `--persona personas/han-seo-jin-crush.json` are also resolved against the project root, so installed entrypoints keep working even when launched from another directory.
+```bash
+export ANTHROPIC_API_KEY=your_key_here
+girlfriend-generator --provider anthropic
+```
 
-Interactive chat requires a real TTY on stdin and stdout. Non-interactive commands such as `--help` and `--list-personas` still work in pipes or scripts, but the live chat loop exits cleanly with a short error if you launch it outside a terminal.
+---
 
-Optional flags:
+## Build your own persona harness
 
-- `--provider heuristic|openai|anthropic`
-- `--provider heuristic|openai|anthropic|remote`
-- `--model <model-name>`
-- `--performance turbo|balanced|cinematic`
-- `--voice-output`
-- `--voice-input-command "<command that prints a transcript to stdout>"`
-- `--server-base-url`
-- `--persona-id`
-- `--session-dir <path>`
-- `--no-export-on-exit`
-- `--no-trace`
-- `--list-personas`
+This project is not limited to bundled characters.
 
-## Remote Mode
+One of the real hooks is that you can build your own **persona harness**:
 
-If you want server-owned persona quality and irregular initiation logic, run against the hosting service:
+- import a persona from JSON
+- create one manually in Persona Studio
+- generate one from a **name**
+- generate one from a **link**
+- generate one from a short **description / vibe**
+
+The idea is simple:
+
+You should be able to create the exact conversational energy you want to train against.
+
+That means you can build:
+
+- a flirty persona
+- a cold persona
+- a playful persona
+- someone based on a public figure vibe
+- a totally custom character with your own style rules
+
+In other words:
+
+**don’t just use personas — build your own persona harness.**
+
+---
+
+## Example commands
+
+Run the app:
+
+```bash
+girlfriend-generator
+```
+
+Launch with a specific persona:
+
+```bash
+girlfriend-generator --persona personas/wonyoung-idol.json
+```
+
+Use Anthropic instead of OpenAI:
+
+```bash
+girlfriend-generator --provider anthropic
+```
+
+Use a specific performance profile:
+
+```bash
+girlfriend-generator --performance turbo
+girlfriend-generator --performance balanced
+girlfriend-generator --performance cinematic
+```
+
+Enable voice output:
+
+```bash
+girlfriend-generator --voice-output
+```
+
+Resume a saved session:
+
+```bash
+girlfriend-generator --resume sessions/your-session.json
+```
+
+List bundled personas:
+
+```bash
+girlfriend-generator --list-personas
+```
+
+---
+
+## Remote mode
+
+If you want server-hosted personas and remote runtime generation:
 
 ```bash
 girlfriend-generator \
@@ -120,148 +245,115 @@ girlfriend-generator \
   --persona-id persona_123
 ```
 
-In remote mode:
-
-- persona packs come from the hosting server
-- replies and first-message initiative come from the hosting server
-- terminal rendering, typing UI, trace UI, voice hooks, and transcript export stay local in this repo
-
-You can either:
-
-- fetch by `--persona-id`
-- fetch by `--persona-slug`
-- compile a new remote persona on the fly with `--compile-remote`
-
-Example remote compile:
+You can also compile a remote persona on the fly:
 
 ```bash
 girlfriend-generator \
   --provider remote \
   --server-base-url http://127.0.0.1:8787 \
   --compile-remote \
-  --display-name 유나 \
+  --display-name Yuna \
   --relationship-mode girlfriend \
-  --context-notes "성수에서 일하는 디자이너 느낌" \
-  --context-link https://instagram.com/yuna.example \
-  --context-snippet "자기야 뭐 해?"
+  --context-notes "designer in Seongsu with dry humor" \
+  --context-link https://instagram.com/example \
+  --context-snippet "what are you doing"
 ```
 
-## Product Boundary
+Remote mode is useful when you want:
 
-This repository is intentionally scoped to the terminal-only CLI client. The install, smoke checks, package entrypoints, and docs are optimized around the local Rich chat loop, persona files, transcript export, voice hooks, and ECC trace visibility.
+- server-owned persona generation
+- hosted runtime logic
+- more dynamic persona compilation flows
 
-The moat features are intended to live in the separate hosting repository:
+while keeping the **terminal UI, transcript export, and local interaction loop** in this repo.
 
-- link/context ingestion
-- persona compilation
-- server-side runtime response generation
-- server-side irregular first-message scheduling
-- memory APIs
+---
 
-## Controls
+## In-app controls
 
-- Type normally to compose a message
-- `Enter` sends
-- `Esc` clears the draft
-- `/help` shows in-app commands
-- `/trace` toggles the ECC trace panel
-- `/status` posts internal session state into the chat
-- `/export` writes JSON and Markdown transcripts to `sessions/`
-- `/voice on` and `/voice off` toggle voice output
-- `/listen` runs the configured voice-input command and sends the transcript
-- `/quit` exits
+- `Enter` — send message
+- `Esc` — clear draft / go back from empty draft
+- `/help` — show command help
+- `/trace` — toggle trace panel
+- `/status` — print session state into chat
+- `/export` — export transcript
+- `/voice on` / `/voice off` — toggle voice output
+- `/listen` — run voice input command
+- `/back` — return to main menu
+- `/quit` — quit session
 
-While the assistant is already typing, finishing a queued reply, or running `/listen`, the next user send is held until that assistant turn completes. This avoids overlapping replies and keeps typing indicators, idle nudges, and transcript ordering stable.
+---
 
-## Example
+## Sessions and export
 
-```bash
-girlfriend-generator \
-  --persona /absolute/path/to/girlfriend_generator/personas/yu-na-girlfriend.json \
-  --voice-output
-```
+Sessions are exported as:
 
-## Voice Notes
+- JSON
+- Markdown
 
-Voice output works out of the box on macOS through the built-in `say` command.
-If `say` is unavailable, the CLI falls back to silent mode instead of failing the chat loop.
+under the local `sessions/` directory by default.
 
-Voice input is intentionally adapter-based for now. Pass a command that records and transcribes speech, then prints the transcript to stdout. This keeps the base app lightweight while still making voice flows scriptable inside Codex or Claude Code workflows.
+That makes it easy to:
 
-## Performance
+- review conversations
+- resume old chats
+- inspect persona behavior
+- reuse transcripts for prompting or iteration
 
-Default runtime is tuned for low latency:
-
-- `--provider heuristic`
-- `--performance turbo`
-- local zero-network reply generation
-- event-driven Rich redraws instead of constant frame refresh
-
-If you switch to `openai` or `anthropic`, quality can improve, but latency will be worse than the local turbo path.
-
-Use `--performance balanced` if you want slightly longer typing simulation without leaving the local heuristic path. Use `--performance cinematic` only when you explicitly want slower, more dramatic pacing.
-
-## Transcript Export
-
-By default the app exports each finished session to the repository-local `sessions/` directory as:
-
-- JSON for programmatic reuse
-- Markdown for quick review or prompt reuse
-
-Editable installs resolve the export target from the repository root rather than your current shell directory, so installed entrypoints still keep transcripts local to this project. Relative `--session-dir` values are resolved the same way. Repeated exports in the same second use collision-safe filenames instead of overwriting the previous transcript. If you are using a non-editable local install, set `GIRLFRIEND_GENERATOR_ROOT` to the repository path to keep the same behavior. You can also trigger export manually with `/export`.
+---
 
 ## Verification
 
-For the fast repository-root test pass:
+Run the test suite:
 
 ```bash
 python3 -m pytest
 ```
 
-Run the full repository-root verification path:
+Run the smoke checks:
 
 ```bash
 bash scripts/smoke.sh
 ```
 
-The smoke script verifies:
+The smoke path verifies:
 
-- package compilation
-- `pytest` from the repository root
-- editable runtime install into a temporary virtualenv, using the offline-safe local path when `wheel` is unavailable
-- `girlfriend-generator --help`
-- `python -m girlfriend_generator --help`
-- bundled persona discovery from outside the repository through both entrypoints
-- repo-relative persona path resolution from outside the repository
-- repository-local transcript path resolution, including the explicit `GIRLFRIEND_GENERATOR_ROOT` override path
-- direct transcript export into the repository-local `sessions/` directory
-- persona/session behavior through pytest coverage
+- package import / compilation
+- entrypoints
+- persona discovery
+- transcript export
+- repository-root path behavior
 
-## Ouroboros
+---
 
-This repository now includes a repo-local Ralph workflow setup:
+## Local-only ECC setup
 
-- pinned anti-oscillation seed: `.codex/ralph-seed.yaml`
-- current loop notes: `.codex/ralph-status.md`
-- evidence capture: `scripts/ouroboros_capture_evidence.sh`
-- Ralph launcher with ontology gate: `scripts/ouroboros_ralph.sh`
+This repository vendors Everything Claude Code assets **project-locally**.
 
-Run the full repo-local Ralph path:
+It uses:
 
-```bash
-bash scripts/ouroboros_ralph.sh
-```
+- `AGENTS.md`
+- `.codex/AGENTS.md`
+- `.agents/skills/`
 
-What it does:
+It does **not** modify global Codex defaults or your `~/.codex` setup unless you explicitly choose to do that yourself.
 
-- checks `ouroboros status health`
-- captures reproducible verification evidence under `artifacts/ouroboros/latest/`
-- scans changed paths for likely ontology drift
-- launches an interview if instability is detected
-- otherwise runs the pinned Ralph workflow sequentially
+---
 
-To force a re-interview even when the ontology looks stable:
+## Project status
 
-```bash
-FORCE_INTERVIEW=1 bash scripts/ouroboros_ralph.sh "Refine the ontology before the next execution"
-```
+This project is actively evolving as a terminal-native social simulator.
+
+Current directions include:
+
+- better landing page / title rendering
+- more playful main-menu flows
+- persona generation and editing improvements
+- random chat discovery flows
+- stronger remote persona pipelines
+
+---
+
+## One-line pitch
+
+**Your CLI boyfriend or girlfriend chats with you — sharpen your social skills and discover your charm. Wake up, nerds.**

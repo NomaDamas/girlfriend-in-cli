@@ -167,5 +167,5 @@ def test_build_logo_rows_keeps_title_swappable() -> None:
     plain_rows = [row.plain for row in rows]
 
     assert any("♡ terminal romance simulator ♡" in row for row in plain_rows)
-    assert any("v0.1.0" in row for row in plain_rows)
+    assert any("v0.1.1" in row for row in plain_rows)
     assert any("█" in row for row in plain_rows)

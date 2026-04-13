@@ -103,10 +103,17 @@ If you can train coding instincts in the terminal, maybe you can train social in
 ```bash
 brew tap NomaDamas/girlfriend-in-cli https://github.com/NomaDamas/brew-girlfriend-in-cli.git
 brew install girlfriend-in-cli
-girlfriend-generator
+mygf
 ```
 
 This is the easiest path for most users.
+
+Preferred launch commands:
+
+```bash
+mygf
+girlfriend-in-cli
+```
 
 > Note: true bare `brew install girlfriend-in-cli` for a fresh machine would require acceptance into `homebrew/core`.  
 > Right now the project ships through a public custom tap, which is the realistic path at this stage.
@@ -117,14 +124,15 @@ From the repository root:
 ```bash
 bash scripts/bootstrap.sh
 source .venv/bin/activate
-girlfriend-generator
+mygf
 ```
 
 That gives you:
 
 - ✅ a local virtualenv
 - ✅ an editable install
-- ✅ the `girlfriend-generator` entrypoint
+- ✅ the `mygf` shortcut
+- ✅ the `girlfriend-in-cli` entrypoint
 - ✅ bundled persona discovery
 
 If you want to run tests:
@@ -156,7 +164,7 @@ On startup, the app can check the latest **stable GitHub Release** and prompt be
 Launch the app:
 
 ```bash
-girlfriend-generator
+mygf
 ```
 
 When the main menu opens, you can:
@@ -172,14 +180,14 @@ Examples:
 
 ```bash
 export OPENAI_API_KEY=your_key_here
-girlfriend-generator
+mygf
 ```
 
 or
 
 ```bash
 export ANTHROPIC_API_KEY=your_key_here
-girlfriend-generator --provider anthropic
+mygf --provider anthropic
 ```
 
 ---
@@ -219,45 +227,45 @@ In other words:
 Run the app:
 
 ```bash
-girlfriend-generator
+mygf
 ```
 
 Launch with a specific persona:
 
 ```bash
-girlfriend-generator --persona personas/wonyoung-idol.json
+mygf --persona personas/wonyoung-idol.json
 ```
 
 Use Anthropic instead of OpenAI:
 
 ```bash
-girlfriend-generator --provider anthropic
+mygf --provider anthropic
 ```
 
 Use a specific performance profile:
 
 ```bash
-girlfriend-generator --performance turbo
-girlfriend-generator --performance balanced
-girlfriend-generator --performance cinematic
+mygf --performance turbo
+mygf --performance balanced
+mygf --performance cinematic
 ```
 
 Enable voice output:
 
 ```bash
-girlfriend-generator --voice-output
+mygf --voice-output
 ```
 
 Resume a saved session:
 
 ```bash
-girlfriend-generator --resume sessions/your-session.json
+mygf --resume sessions/your-session.json
 ```
 
 List bundled personas:
 
 ```bash
-girlfriend-generator --list-personas
+mygf --list-personas
 ```
 
 ---
@@ -385,3 +393,12 @@ Current directions include:
 ## 📣 One-line pitch
 
 **Your CLI boyfriend or girlfriend chats with you — sharpen your social skills and discover your charm. Wake up, nerds.**
+
+---
+
+## ⚖️ License
+
+This project is licensed under **AGPL-3.0-only**.
+
+That means if someone modifies this code and offers it as a networked service,
+they are required to make the corresponding source available under the same license.

@@ -31,9 +31,9 @@ else
 fi
 
 cd "$tmpdir"
-girlfriend-generator --help >/dev/null
+mygf --help >/dev/null
 python -m girlfriend_generator --help >/dev/null
-girlfriend-generator --list-personas >/dev/null
+mygf --list-personas >/dev/null
 python -m girlfriend_generator --list-personas >/dev/null
 GIRLFRIEND_GENERATOR_ROOT="$ROOT_DIR" python - <<'PY'
 from pathlib import Path

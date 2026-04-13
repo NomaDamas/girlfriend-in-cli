@@ -5,6 +5,7 @@ class GirlfriendInCli < Formula
   homepage "https://github.com/NomaDamas/girlfriend-in-cli"
   url "https://github.com/NomaDamas/girlfriend-in-cli/archive/refs/tags/v0.1.0.tar.gz"
   sha256 "c9b4ca86945aba8f74b7c26caa949f6df0d4ff0a1a219ca01cc2da3837dfd2bb"
+  license "AGPL-3.0-only"
 
   depends_on "python@3.12"
 
@@ -38,6 +39,6 @@ class GirlfriendInCli < Formula
   end
 
   test do
-    assert_match "romance simulation", shell_output("#{bin}/girlfriend-generator --help")
+    assert_match "romance simulation", shell_output("#{bin}/mygf --help")
   end
 end

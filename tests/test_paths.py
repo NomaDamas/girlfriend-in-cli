@@ -78,5 +78,8 @@ def test_pyproject_exposes_only_terminal_cli_entrypoint() -> None:
         encoding="utf-8"
     )
 
+    assert 'license = {file = "LICENSE"}' in pyproject
+    assert 'girlfriend-in-cli = "girlfriend_generator.cli:main"' in pyproject
     assert 'girlfriend-generator = "girlfriend_generator.cli:main"' in pyproject
+    assert 'mygf = "girlfriend_generator.cli:main"' in pyproject
     assert "girlfriend-generator-api" not in pyproject

@@ -35,10 +35,10 @@ if importlib.util.find_spec("pytest") is None:
     sys.stderr.write("Note: pytest is not installed in this environment.\n")
 PY
 
-girlfriend-generator --help >/dev/null
+mygf --help >/dev/null
 python -m girlfriend_generator --help >/dev/null
-girlfriend-generator --list-personas >/dev/null
+mygf --list-personas >/dev/null
 
 printf '\nEnvironment ready.\n'
 printf 'Install mode: %s\n' "$INSTALL_MODE"
-printf 'Run: source .venv/bin/activate && girlfriend-generator\n'
+printf 'Run: source .venv/bin/activate && mygf\n'

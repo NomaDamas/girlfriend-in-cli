@@ -21,6 +21,7 @@ def build_formula(tag: str, sha256: str) -> str:
   homepage "https://github.com/NomaDamas/girlfriend-in-cli"
   url "https://github.com/NomaDamas/girlfriend-in-cli/archive/refs/tags/{tag}.tar.gz"
   sha256 "{sha256}"
+  license "AGPL-3.0-only"
 
   depends_on "python@3.12"
 
@@ -54,7 +55,7 @@ def build_formula(tag: str, sha256: str) -> str:
   end
 
   test do
-    assert_match "romance simulation", shell_output("#{{bin}}/girlfriend-generator --help")
+    assert_match "romance simulation", shell_output("#{{bin}}/mygf --help")
   end
 end
 """

@@ -574,11 +574,14 @@ def _build_system_prompt(
         f"Your identity: {persona.name}, {persona.age}세, {persona.relationship_mode}.\n"
         f"Background: {persona.background}\n"
         f"Texting style: {persona.texting_style}\n"
+        f"Emoji level: {persona.style_profile.emoji_level}\n"
         f"Interests: {', '.join(persona.interests)}\n"
         f"Melts your heart: {', '.join(persona.soft_spots)}\n"
         f"Turns you off: {', '.join(persona.boundaries)}\n"
         f"Current affection: {affection_score}/100. Current mood: {mood}.\n"
         f"Signature phrases: {', '.join(persona.style_profile.signature_phrases) or 'None'}.\n"
+        "Use emojis naturally only if they fit the persona, mood, and emoji level. "
+        "If the persona would never use emojis, don't force them.\n"
         f"{persona.provider_system_hint or ''}"
     )
 

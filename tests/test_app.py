@@ -301,6 +301,37 @@ def test_trace_command_toggles_panel_visibility(tmp_path: Path) -> None:
     assert outcome["status_line"] == "Trace panel toggled."
 
 
+def test_affection_command_posts_battle_power_report(tmp_path: Path) -> None:
+    persona = _load_test_persona()
+    session = ConversationSession(persona=persona)
+    session.bootstrap()
+    session.last_coach_charm_point = "자연스러운 장난기"
+    session.last_coach_charm_type = "playful"
+    session.last_coach_charm_feedback = "가볍게 웃기면서도 부담을 안 준다"
+    session.add_user_message("오늘 너 생각나서 웃겼어 😊")
+
+    outcome = _handle_command(
+        text="/affection",
+        session=session,
+        provider=object(),
+        pending_job=None,
+        pending_delivery=None,
+        voice_input=DisabledVoiceInput(),
+        voice_output_available=False,
+        voice_output_enabled=False,
+        show_trace=True,
+        session_dir=tmp_path,
+    )
+
+    posted = session.messages[-1].text
+    assert "전투력 측정" in posted
+    assert "Init" in posted
+    assert "Emp" in posted
+    assert "Charm Point" in posted
+    assert "자연스러운 장난기" in posted
+    assert outcome["status_line"] == "Battle power posted."
+
+
 def test_voice_commands_toggle_when_backend_is_available(tmp_path: Path) -> None:
     persona = _load_test_persona()
     session = ConversationSession(persona=persona)

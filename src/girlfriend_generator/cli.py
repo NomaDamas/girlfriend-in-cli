@@ -596,12 +596,9 @@ def _show_main_menu(
     # Play intro animation on first launch
     if not skip_intro:
         _play_intro(console)
+        _show_star_popup(console)
         _show_first_run_onboarding(console, args)
         console.clear()
-
-    # Always show star prompt before the main menu until the user actually stars.
-    _show_star_popup(console)
-    console.clear()
 
     # Centered logo block
     logo_group = Group(*[Align.center(r) for r in _build_logo_rows()])
@@ -797,6 +794,8 @@ def _show_usage_guide(console: "Console", args: argparse.Namespace) -> None:  # 
         ("  • New Chat → pick a persona and start talking\n", "white"),
         ("  • Persona Studio → build your own persona harness\n", "white"),
         ("  • Settings → provider, language, API keys\n", "white"),
+        ("  • OpenAI keys: ", "white"), ("platform.openai.com/api-keys\n", "green"),
+        ("  • Anthropic keys: ", "white"), ("console.anthropic.com/settings/keys\n", "green"),
         ("  • /advice → see coach feedback during chat\n", "white"),
         ("  • /back → return to the main menu\n\n", "white"),
         ("  Release updates are checked on startup.\n", "dim"),

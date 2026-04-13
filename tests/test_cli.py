@@ -140,6 +140,35 @@ def test_show_main_menu_returns_selected_chat_room(monkeypatch, tmp_path: Path) 
     assert result == (args, resolve_persona_path(persona_path), resume_path)
 
 
+def test_show_main_menu_does_not_show_star_popup_on_skip_intro(monkeypatch) -> None:
+    args = cli.build_parser().parse_args([])
+    persona_path = bundled_persona_dir() / "wonyoung-idol.json"
+    calls = {"star": 0}
+
+    monkeypatch.setattr(cli, "_show_star_popup", lambda *_args, **_kwargs: calls.__setitem__("star", calls["star"] + 1))
+    monkeypatch.setattr("girlfriend_generator.selector.arrow_select", lambda *_args, **_kwargs: None)
+
+    cli._show_main_menu([persona_path], args, skip_intro=True)
+
+    assert calls["star"] == 0
+
+
+def test_show_main_menu_shows_star_popup_on_first_entry(monkeypatch) -> None:
+    args = cli.build_parser().parse_args([])
+    persona_path = bundled_persona_dir() / "wonyoung-idol.json"
+    calls = {"star": 0, "intro": 0, "onboarding": 0}
+
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.setattr(cli, "_show_star_popup", lambda *_args, **_kwargs: calls.__setitem__("star", calls["star"] + 1))
+    monkeypatch.setattr(cli, "_play_intro", lambda *_args, **_kwargs: calls.__setitem__("intro", calls["intro"] + 1))
+    monkeypatch.setattr(cli, "_show_first_run_onboarding", lambda *_args, **_kwargs: calls.__setitem__("onboarding", calls["onboarding"] + 1))
+    monkeypatch.setattr("girlfriend_generator.selector.arrow_select", lambda *_args, **_kwargs: None)
+
+    cli._show_main_menu([persona_path], args, skip_intro=False)
+
+    assert calls == {"star": 1, "intro": 1, "onboarding": 1}
+
+
 def test_build_filled_title_rows_uses_solid_blocks() -> None:
     rows = cli._build_filled_title_rows("girlfriend in cli", style_variant="solid")
 
@@ -169,7 +198,7 @@ def test_build_logo_rows_keeps_title_swappable() -> None:
     plain_rows = [row.plain for row in rows]
 
     assert any("♡ terminal romance simulator ♡" in row for row in plain_rows)
-    assert any("v0.1.3.1" in row for row in plain_rows)
+    assert any("v0.1.3.2" in row for row in plain_rows)
 
 
 def test_build_main_menu_actions_shows_setup_guide_when_provider_needs_setup(monkeypatch) -> None:

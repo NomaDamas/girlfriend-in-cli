@@ -1144,24 +1144,54 @@ def _handle_command(
         bar_filled = report["score"] // 5
         bar_empty = 20 - bar_filled
         bar = "█" * bar_filled + "░" * bar_empty
+        battle_power = report["battle_power"]
+
+        def metric_cell(short: str, value: int) -> str:
+            filled = min(8, max(0, round(value / 12.5)))
+            meter = "█" * filled + "░" * (8 - filled)
+            return f"{short:<6}{value:>3} {meter}"
+
+        row1 = "  |  ".join([
+            metric_cell("Init", battle_power["Initiation"]),
+            metric_cell("Assert", battle_power["Assertiveness"]),
+            metric_cell("Open", battle_power["Self-Disclosure"]),
+            metric_cell("Support", battle_power["Emotional Support"]),
+            metric_cell("Repair", battle_power["Conflict Repair"]),
+        ])
+        row2 = "  |  ".join([
+            metric_cell("Emp", battle_power["Empathy"]),
+            metric_cell("Control", battle_power["Emotional Control"]),
+            metric_cell("Play", battle_power["Playfulness"]),
+            metric_cell("React", battle_power["Responsiveness"]),
+            metric_cell("Steady", battle_power["Consistency"]),
+        ])
+        charm_emoji = report.get("charm_type_emoji", "✨")
 
         lines = [
-            f"{'─' * 36}",
+            f"{'═' * 92}",
+            f"  ⚔ 전투력 측정",
             f"  {hearts}  {report['label']}",
             f"  [{bar}] {report['score']}/100",
-            f"{'─' * 36}",
+            f"{'─' * 92}",
+            f"  {row1}",
+            f"  {row2}",
+            f"{'─' * 92}",
+            f"  Charm Point: {session.last_coach_charm_point or '아직 분석 없음'}",
+            f"  Charm Type: {charm_emoji} {session.last_coach_charm_type or 'unknown'}",
+            f"  Charm Feedback: {session.last_coach_charm_feedback or '아직 분석 없음'}",
+            f"{'─' * 92}",
             f"  Messages:  you {report['total_user']}  /  {session.persona.name} {report['total_assistant']}",
             f"  Avg length: {report['avg_msg_length']} chars",
             f"  Positive:  {report['positive_messages']}  |  Negative: {report['negative_messages']}",
             f"  Mood: {report['mood']} (intensity {report['mood_intensity']:.1f})",
-            f"{'─' * 36}",
+            f"{'─' * 92}",
             f"  Tip: {report['tip']}",
-            f"{'─' * 36}",
+            f"{'─' * 92}",
         ]
         session.add_system_message("\n".join(lines))
         return {
             "draft": "",
-            "status_line": "Affection report posted.",
+            "status_line": "Battle power posted.",
             "pending_job": pending_job,
             "show_trace": show_trace,
             "voice_output_enabled": voice_output_enabled,

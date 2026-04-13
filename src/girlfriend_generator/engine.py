@@ -5,6 +5,28 @@ from datetime import datetime, timedelta, timezone
 
 from .models import ChatMessage, MoodState, MoodType, Persona, TickResult
 
+_CHARM_TYPE_EMOJI = {
+    "playful": "😜",
+    "warm": "🫶",
+    "bold": "🔥",
+    "thoughtful": "🧠",
+    "flirty": "💘",
+    "steady": "🛡️",
+}
+
+_BATTLE_METRICS = [
+    ("Initiation", "initiating relationships and opening well"),
+    ("Assertiveness", "clear intent and healthy confidence"),
+    ("Self-Disclosure", "sharing yourself without sounding robotic"),
+    ("Emotional Support", "comforting and validating the other person"),
+    ("Conflict Repair", "recovering after friction"),
+    ("Empathy", "reading feelings accurately"),
+    ("Emotional Control", "staying calm and regulated"),
+    ("Playfulness", "using positive humor and charm"),
+    ("Responsiveness", "reacting with timing and engagement"),
+    ("Consistency", "steady tone and follow-through"),
+]
+
 
 def utc_now() -> datetime:
     """Return current time with local timezone for display."""
@@ -220,6 +242,37 @@ class ConversationSession:
             if any(t in m.text for t in negative_tokens)
         )
 
+        exclaim_count = sum(m.text.count("!") + m.text.count("！") for m in user_msgs)
+        question_count = sum(m.text.count("?") + m.text.count("？") for m in user_msgs)
+        emojiish_count = sum(
+            sum(1 for ch in m.text if ch in "❤️♥💘💕😊🥰😘😜✨🔥👍😉🤣😂😭🥲🙏")
+            for m in user_msgs
+        )
+        avg_len_score = min(100, int(avg_len * 4)) if user_msgs else 0
+        initiation = min(100, 25 + total_user * 6 + question_count * 2)
+        assertiveness = max(0, min(100, 35 + pos_count * 8 - neg_count * 6))
+        disclosure = max(0, min(100, 20 + avg_len_score))
+        support = max(0, min(100, 25 + pos_count * 10))
+        repair = max(0, min(100, 30 + pos_count * 6 - neg_count * 8))
+        empathy = max(0, min(100, 30 + pos_count * 9 + question_count * 2))
+        control = max(0, min(100, 60 - neg_count * 10))
+        playfulness = max(0, min(100, 20 + emojiish_count * 8 + exclaim_count * 3))
+        responsiveness = max(0, min(100, 25 + total_user * 5 + question_count * 3))
+        consistency = max(0, min(100, 35 + total_user * 4 - neg_count * 4))
+
+        battle_power = {
+            "Initiation": initiation,
+            "Assertiveness": assertiveness,
+            "Self-Disclosure": disclosure,
+            "Emotional Support": support,
+            "Conflict Repair": repair,
+            "Empathy": empathy,
+            "Emotional Control": control,
+            "Playfulness": playfulness,
+            "Responsiveness": responsiveness,
+            "Consistency": consistency,
+        }
+
         return {
             "score": score,
             "level": level,
@@ -232,6 +285,9 @@ class ConversationSession:
             "negative_messages": neg_count,
             "mood": self.mood.current,
             "mood_intensity": self.mood.intensity,
+            "battle_power": battle_power,
+            "battle_metric_defs": _BATTLE_METRICS,
+            "charm_type_emoji": _CHARM_TYPE_EMOJI.get(self.last_coach_charm_type.lower(), "✨") if self.last_coach_charm_type else "✨",
         }
 
     def tick(self, provider: object, now: datetime | None = None) -> TickResult:

@@ -559,13 +559,8 @@ def _show_main_menu(
     from .i18n import t, get_language
     lang = get_language()
 
-    menu_items = [
-        MenuItem(t("new_chat", lang), t("new_chat_desc", lang), icon="💬"),
-        MenuItem(f"{t('chat_rooms', lang)} ({room_count})", t("chat_rooms_desc", lang), icon="💌"),
-        MenuItem(t("persona_studio", lang), t("persona_studio_desc", lang), icon="✨"),
-        MenuItem(t("settings", lang), t("settings_desc", lang), icon="⚙️"),
-        MenuItem(t("quit", lang), t("quit_desc", lang), icon="👋"),
-    ]
+    actions = _build_main_menu_actions(room_count, args, lang)
+    menu_items = [item for _action, item in actions]
 
     while True:
         choice = arrow_select(
@@ -575,11 +570,16 @@ def _show_main_menu(
             border_style="bright_magenta",
         )
 
-        if choice is None or choice == 4:  # Quit
+        if choice is None:
             console.print("\n  [dim]Goodbye.[/dim]")
             return None
 
-        if choice == 0:  # New Chat
+        action = actions[choice][0]
+        if action == "quit":
+            console.print("\n  [dim]Goodbye.[/dim]")
+            return None
+
+        if action == "new_chat":
             console.print()
             result = _pick_persona_interactive(bundled_personas, console)
             if result is None:
@@ -588,7 +588,7 @@ def _show_main_menu(
                 return _show_main_menu(fresh, args, skip_intro=True)
             return args, resolve_persona_path(result), None
 
-        if choice == 1:  # Chat Rooms
+        if action == "chat_rooms":
             console.print()
             room_result = _show_chat_rooms(console, bundled_personas)
             if room_result is None:
@@ -598,7 +598,7 @@ def _show_main_menu(
             persona_path, resume_path = room_result
             return args, resolve_persona_path(persona_path), resume_path
 
-        if choice == 2:  # Persona Studio
+        if action == "persona_studio":
             console.print()
             studio_result = _persona_studio(console, bundled_personas)
             if studio_result is not None:
@@ -607,12 +607,97 @@ def _show_main_menu(
             fresh = discover_personas(bundled_persona_dir()) if bundled_persona_dir().exists() else []
             return _show_main_menu(fresh, args, skip_intro=True)
 
-        if choice == 3:  # Settings
+        if action == "setup_guide":
+            console.print()
+            _provider_setup_guide(console, args)
+            console.clear()
+            fresh = discover_personas(bundled_persona_dir()) if bundled_persona_dir().exists() else []
+            return _show_main_menu(fresh, args, skip_intro=True)
+
+        if action == "settings":
             console.print()
             _settings_menu(console, args)
             console.clear()
             fresh = discover_personas(bundled_persona_dir()) if bundled_persona_dir().exists() else []
             return _show_main_menu(fresh, args, skip_intro=True)
+
+
+def _provider_needs_setup(args: argparse.Namespace) -> bool:
+    import os
+
+    if args.provider == "openai":
+        return not bool(os.environ.get("OPENAI_API_KEY"))
+    if args.provider == "anthropic":
+        return not bool(os.environ.get("ANTHROPIC_API_KEY"))
+    return False
+
+
+def _build_main_menu_actions(
+    room_count: int,
+    args: argparse.Namespace,
+    lang: str,
+) -> list[tuple[str, "MenuItem"]]:  # type: ignore[name-defined]
+    from .i18n import t
+    from .selector import MenuItem
+    actions: list[tuple[str, MenuItem]] = [
+        ("new_chat", MenuItem(t("new_chat", lang), t("new_chat_desc", lang), icon="💬")),
+        ("chat_rooms", MenuItem(f"{t('chat_rooms', lang)} ({room_count})", t("chat_rooms_desc", lang), icon="💌")),
+        ("persona_studio", MenuItem(t("persona_studio", lang), t("persona_studio_desc", lang), icon="✨")),
+    ]
+    if _provider_needs_setup(args):
+        actions.append(
+            ("setup_guide", MenuItem(t("setup_guide", lang), t("setup_guide_desc", lang), icon="🧭"))
+        )
+    actions.extend([
+        ("settings", MenuItem(t("settings", lang), t("settings_desc", lang), icon="⚙️")),
+        ("quit", MenuItem(t("quit", lang), t("quit_desc", lang), icon="👋")),
+    ])
+    return actions
+
+
+def _provider_setup_guide(console: "Console", args: argparse.Namespace) -> None:  # type: ignore[name-defined]
+    from rich.align import Align
+    from rich.panel import Panel
+    from rich.text import Text
+
+    provider = args.provider
+    if provider == "openai":
+        body = Text.assemble(
+            ("\n  OpenAI setup\n\n", "bold bright_cyan"),
+            ("  • Official API access currently uses ", "white"),
+            ("API keys", "bold yellow"),
+            (".\n", "white"),
+            ("  • ChatGPT/OpenAI account login via OAuth is not available here\n", "dim"),
+            ("    as a general API auth flow.\n\n", "dim"),
+            ("  Next step:\n", "bold"),
+            ("  Settings → API Keys → OpenAI Key\n", "green"),
+        )
+    elif provider == "anthropic":
+        body = Text.assemble(
+            ("\n  Anthropic setup\n\n", "bold bright_cyan"),
+            ("  • This provider uses an ", "white"),
+            ("API key", "bold yellow"),
+            (".\n\n", "white"),
+            ("  Next step:\n", "bold"),
+            ("  Settings → API Keys → Anthropic Key\n", "green"),
+        )
+    else:
+        body = Text.assemble(
+            ("\n  This provider does not currently need API login guidance.\n", "white"),
+        )
+
+    console.print(Align.center(Panel(
+        body,
+        title="[bold bright_cyan]  Setup Guide  [/bold bright_cyan]",
+        border_style="bright_cyan",
+        width=72,
+        padding=(0, 1),
+    )))
+    try:
+        from .wide_input import wide_input
+        wide_input("  Press Enter to continue...")
+    except (EOFError, KeyboardInterrupt):
+        pass
 
 
 _BUILTIN_PERSONAS = {

@@ -21,7 +21,7 @@ def build_formula(tag: str, sha256: str) -> str:
   homepage "https://github.com/NomaDamas/girlfriend-in-cli"
   url "https://github.com/NomaDamas/girlfriend-in-cli/archive/refs/tags/{tag}.tar.gz"
   sha256 "{sha256}"
-  license "AGPL-3.0-only"
+  license "Elastic-2.0"
 
   depends_on "python@3.12"
 

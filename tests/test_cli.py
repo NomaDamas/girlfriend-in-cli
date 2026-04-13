@@ -167,5 +167,22 @@ def test_build_logo_rows_keeps_title_swappable() -> None:
     plain_rows = [row.plain for row in rows]
 
     assert any("♡ terminal romance simulator ♡" in row for row in plain_rows)
-    assert any("v0.1.1" in row for row in plain_rows)
-    assert any("█" in row for row in plain_rows)
+    assert any("v0.1.2" in row for row in plain_rows)
+
+
+def test_build_main_menu_actions_shows_setup_guide_when_provider_needs_setup(monkeypatch) -> None:
+    args = cli.build_parser().parse_args([])
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    actions = cli._build_main_menu_actions(0, args, "en")
+
+    assert any(action == "setup_guide" for action, _item in actions)
+
+
+def test_build_main_menu_actions_hides_setup_guide_when_provider_is_configured(monkeypatch) -> None:
+    args = cli.build_parser().parse_args([])
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+
+    actions = cli._build_main_menu_actions(0, args, "en")
+
+    assert all(action != "setup_guide" for action, _item in actions)

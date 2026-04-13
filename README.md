@@ -398,7 +398,11 @@ Current directions include:
 
 ## ⚖️ License
 
-This project is licensed under **AGPL-3.0-only**.
+This project is licensed under **Elastic License 2.0**.
 
-That means if someone modifies this code and offers it as a networked service,
-they are required to make the corresponding source available under the same license.
+That means people can use, modify, and distribute the code,
+but they cannot turn it into a competing hosted/managed service.
+
+This is intentional:
+- the terminal client can stay public
+- the monetizable server-side moat remains protected

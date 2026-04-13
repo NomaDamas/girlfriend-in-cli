@@ -287,6 +287,8 @@ class OpenAIProvider:
             memory_update=str(parsed.get("memory_update", "")),
             internal_thought=str(parsed.get("internal_thought", "")),
             coach_feedback=str(parsed.get("user_feedback", "")),
+            coach_strength=str(parsed.get("user_strength", "")),
+            coach_weakness=str(parsed.get("user_weakness", "")),
             should_burst=bool(parsed.get("should_burst", False)),
             burst_messages=burst_list,
             next_proactive_seconds=proactive_s,
@@ -396,6 +398,8 @@ class AnthropicProvider:
             memory_update=str(parsed.get("memory_update", "")),
             internal_thought=str(parsed.get("internal_thought", "")),
             coach_feedback=str(parsed.get("user_feedback", "")),
+            coach_strength=str(parsed.get("user_strength", "")),
+            coach_weakness=str(parsed.get("user_weakness", "")),
         )
 
     def generate_initiative(
@@ -539,6 +543,8 @@ def _build_system_prompt(
         '  "mood": "one of: neutral/happy/playful/sulky/excited/worried/flirty",\n'
         '  "memory_update": "any new important fact you learned about them (or empty string)",\n'
         '  "internal_thought": "your private feeling right now (Korean, 1 sentence)",\n'
+        '  "user_strength": "what the user did well in their last message (Korean, 1 short sentence)",\n'
+        '  "user_weakness": "what the user did poorly in their last message (Korean, 1 short sentence)",\n'
         '  "user_feedback": "As a SHARP, BRUTALLY HONEST dating coach, critique the user last message. '
         "MUST include: (1) what is specifically wrong with their exact words, "
         "(2) a CONCRETE REWRITE — quote the actual better Korean line they should have sent, "
@@ -636,4 +642,13 @@ def parse_llm_json_response(text: str) -> dict:
         return json.loads(clean)
     except (json.JSONDecodeError, ValueError):
         # Fallback: extract just the reply text
-        return {"reply": text, "affection_delta": 0, "mood": "neutral", "memory_update": "", "internal_thought": ""}
+        return {
+            "reply": text,
+            "affection_delta": 0,
+            "mood": "neutral",
+            "memory_update": "",
+            "internal_thought": "",
+            "user_strength": "",
+            "user_weakness": "",
+            "user_feedback": "",
+        }

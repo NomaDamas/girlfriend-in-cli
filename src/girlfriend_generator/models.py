@@ -120,6 +120,8 @@ class ProviderReply:
     memory_update: str = ""
     internal_thought: str = ""
     coach_feedback: str = ""
+    coach_strength: str = ""
+    coach_weakness: str = ""
     should_burst: bool = False
     burst_messages: list[str] = field(default_factory=list)
     next_proactive_seconds: int | None = None

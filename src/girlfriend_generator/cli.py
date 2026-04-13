@@ -459,10 +459,11 @@ def _show_star_popup(console: "Console") -> None:  # type: ignore[name-defined]
     body = Text.assemble(
         ("\n", ""),
         ("  (✧ᴗ✧)  ", "bold bright_magenta"),
-        ("If you enjoy this project,\n", "white"),
+        ("If this project made you smile,\n", "white"),
         ("         a GitHub ", "white"),
         ("Star", "bold yellow"),
-        (" means a lot to the developers!\n\n", "white"),
+        (" genuinely keeps us going.\n", "white"),
+        ("         It really gives the devs strength.\n\n", "dim"),
         (f"         github.com/{_GITHUB_REPO}\n", "dim"),
     )
     console.print(Align.center(Panel(
@@ -475,7 +476,7 @@ def _show_star_popup(console: "Console") -> None:  # type: ignore[name-defined]
 
     try:
         from .wide_input import wide_input
-        answer = wide_input("  Open GitHub to star? (y/n): ").strip().lower()
+        answer = wide_input("  Open GitHub and leave a star now? (y/n): ").strip().lower()
     except (EOFError, KeyboardInterrupt):
         answer = "n"
 

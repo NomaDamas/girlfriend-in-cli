@@ -673,6 +673,8 @@ def _show_ending(
         '  "persona_final_words": "the last message the persona sends (in-character, 1-2 sentences)",\n'
         '  "report_title": "a dramatic title for the ending (like 차가운 작별, 해피엔딩, 완전한 사랑)",\n'
         '  "highlights": ["key moment 1", "key moment 2", "key moment 3"],\n'
+        '  "user_strength": "what the user did well across the chat (1 sentence)",\n'
+        '  "user_weakness": "what the user consistently did poorly across the chat (1 sentence)",\n'
         '  "what_went_wrong": "what the user did right or wrong (1-2 sentences)",\n'
         '  "rating": "S/A/B/C/D/F grade on their performance"\n'
         "}"
@@ -697,6 +699,8 @@ def _show_ending(
             "persona_final_words": "...",
             "report_title": "GAME OVER" if kind == "game_over" else "SUCCESS",
             "highlights": [],
+            "user_strength": "",
+            "user_weakness": "",
             "what_went_wrong": "",
             "rating": "?",
         }
@@ -719,6 +723,16 @@ def _show_ending(
     lines = [body]
     for h in data.get("highlights", []):
         lines.append(Text(f"    • {h}\n", style="cyan"))
+    if data.get("user_strength"):
+        lines.append(Text.assemble(
+            ("\n  Strength:  ", "bold green"),
+            (f"{data.get('user_strength', '')}\n", "green"),
+        ))
+    if data.get("user_weakness"):
+        lines.append(Text.assemble(
+            ("\n  Weakness:  ", "bold red"),
+            (f"{data.get('user_weakness', '')}\n", "red"),
+        ))
     lines.append(Text.assemble(
         ("\n  ", ""),
         ("Review:  ", "bold"),
@@ -793,6 +807,8 @@ def _finish_job(
         if reply.memory_update:
             session.memory_notes.append(reply.memory_update)
         session.last_coach_feedback = reply.coach_feedback
+        session.last_coach_strength = reply.coach_strength
+        session.last_coach_weakness = reply.coach_weakness
         session.last_internal_thought = reply.internal_thought
         # LLM-decided proactive follow-up scheduling
         if reply.next_proactive_seconds and reply.next_proactive_seconds > 0:
@@ -1082,7 +1098,11 @@ def _handle_command(
     if lowered == "/advice":
         # Show latest coach feedback as a system message
         feedback = session.last_coach_feedback or "아직 조언이 없어요. 메시지를 보내보세요!"
-        session.add_system_message(f"💡 Coach: {feedback}")
+        strength = session.last_coach_strength or "아직 강점 분석이 없어요."
+        weakness = session.last_coach_weakness or "아직 약점 분석이 없어요."
+        session.add_system_message(
+            f"💡 Coach\n✓ Strength: {strength}\n✗ Weakness: {weakness}\n→ Advice: {feedback}"
+        )
         return {
             "draft": "",
             "status_line": "Coach advice posted.",
@@ -1482,8 +1502,23 @@ def _render_trace(trace: RuntimeTrace, persona: Persona, session: ConversationSe
             padding=(0, 1),
         ))
     if session.last_coach_feedback:
+        coach_lines = []
+        if session.last_coach_strength:
+            coach_lines.append(Text.assemble(
+                ("✓ Strength  ", "bold green"),
+                (session.last_coach_strength[:80], "green"),
+            ))
+        if session.last_coach_weakness:
+            coach_lines.append(Text.assemble(
+                ("✗ Weakness  ", "bold red"),
+                (session.last_coach_weakness[:80], "red"),
+            ))
+        coach_lines.append(Text.assemble(
+            ("→ Advice  ", "bold cyan"),
+            (session.last_coach_feedback[:120], "cyan"),
+        ))
         feedback_panels.append(Panel(
-            f"[cyan]{session.last_coach_feedback[:120]}[/cyan]",
+            RichGroup(*coach_lines),
             title="[bold cyan]💡 Dating Coach[/bold cyan]",
             border_style="cyan",
             padding=(0, 1),

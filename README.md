@@ -4,9 +4,9 @@
 
 # girlfriend-in-cli
 
-**Wake up, nerds.**
+**⚡ Wake up, nerds.**
 
-**Your CLI boyfriend or girlfriend chats with you — sharpen your social skills and discover your charm.**
+**💘 Your CLI boyfriend or girlfriend chats with you — sharpen your social skills and discover your charm.**
 
 `girlfriend-in-cli` is a terminal-native romance simulator for the AI-native era: a weird, playful, and surprisingly sincere open-source project for vibe coders who spend too much time in the shell and not enough time practicing how to talk like a human.
 
@@ -19,17 +19,17 @@ It is built around a simple belief:
 
 So yes:
 
-- code in the terminal
-- waste less Slack time
-- survive lonely vibe-coding sessions
-- practice warmth, timing, empathy, and charm
-- build your own persona harness and talk to the energy you want
+- 💻 code in the terminal
+- ⏳ waste less Slack time
+- 🌙 survive lonely vibe-coding sessions
+- 🫶 practice warmth, timing, empathy, and charm
+- 🧠 build your own persona harness and talk to the energy you want
 
 **Don’t just grind code. Grind charm.**
 
 ---
 
-## Why this exists
+## ✨ Why this exists
 
 Modern builders already live in the terminal.
 
@@ -42,11 +42,11 @@ That means the terminal can become more than a place for:
 
 It can also become a place to practice:
 
-- conversation flow
-- emotional timing
-- reading reactions
-- flirting without sounding robotic
-- becoming a slightly less socially dead T-type developer
+- 💬 conversation flow
+- ⏱️ emotional timing
+- 👀 reading reactions
+- 😏 flirting without sounding robotic
+- 🧊 becoming a slightly less socially dead T-type developer
 
 `girlfriend-in-cli` is for:
 
@@ -57,24 +57,24 @@ It can also become a place to practice:
 
 ---
 
-## What it does
+## 🛠️ What it does
 
-- Runs a terminal-only chat UI with Rich
-- Lets you chat with bundled boyfriend / girlfriend personas
-- Supports saved sessions and resume flow
-- Sends follow-up nudges if you leave the other side hanging
-- Supports voice output on macOS via `say`
-- Supports voice input through a custom transcription command
-- Includes a Persona Studio for importing, editing, and creating personas
-- Can auto-generate personas from a **name, link, or short prompt**
-- Supports remote persona compilation and hosting workflows
-- Exposes a live ECC trace/debug panel during runs
+- 💬 Runs a terminal-only chat UI with Rich
+- 🧑‍🤝‍🧑 Lets you chat with bundled boyfriend / girlfriend personas
+- 💾 Supports saved sessions and resume flow
+- 📩 Sends follow-up nudges if you leave the other side hanging
+- 🔊 Supports voice output on macOS via `say`
+- 🎙️ Supports voice input through a custom transcription command
+- 🧪 Includes a Persona Studio for importing, editing, and creating personas
+- 🔎 Can auto-generate personas from a **name, link, or short prompt**
+- 🌐 Supports remote persona compilation and hosting workflows
+- 📊 Exposes a live ECC trace/debug panel during runs
 
 ---
 
-## The philosophy
+## 🧭 The philosophy
 
-**Wake up, nerds.**
+**⚡ Wake up, nerds.**
 
 The point of this project is not “fake romance.”
 
@@ -96,7 +96,7 @@ If you can train coding instincts in the terminal, maybe you can train social in
 
 ---
 
-## Quick Start
+## 🚀 Quick Start
 
 From the repository root:
 
@@ -108,10 +108,10 @@ girlfriend-generator
 
 That gives you:
 
-- a local virtualenv
-- an editable install
-- the `girlfriend-generator` entrypoint
-- bundled persona discovery
+- ✅ a local virtualenv
+- ✅ an editable install
+- ✅ the `girlfriend-generator` entrypoint
+- ✅ bundled persona discovery
 
 If you want to run tests:
 
@@ -127,7 +127,7 @@ bash scripts/smoke.sh
 
 ---
 
-## First run
+## 🎮 First run
 
 Launch the app:
 
@@ -160,7 +160,7 @@ girlfriend-generator --provider anthropic
 
 ---
 
-## Build your own persona harness
+## 🧠 Build your own persona harness
 
 This project is not limited to bundled characters.
 
@@ -178,11 +178,11 @@ You should be able to create the exact conversational energy you want to train a
 
 That means you can build:
 
-- a flirty persona
-- a cold persona
-- a playful persona
-- someone based on a public figure vibe
-- a totally custom character with your own style rules
+- 😘 a flirty persona
+- 🧊 a cold persona
+- 😜 a playful persona
+- 🔗 someone based on a public figure vibe
+- 🧩 a totally custom character with your own style rules
 
 In other words:
 
@@ -190,7 +190,7 @@ In other words:
 
 ---
 
-## Example commands
+## ⌨️ Example commands
 
 Run the app:
 
@@ -238,7 +238,7 @@ girlfriend-generator --list-personas
 
 ---
 
-## Remote mode
+## 🌐 Remote mode
 
 If you want server-hosted personas and remote runtime generation:
 
@@ -273,7 +273,7 @@ while keeping the **terminal UI, transcript export, and local interaction loop**
 
 ---
 
-## In-app controls
+## 🎛️ In-app controls
 
 - `Enter` — send message
 - `Esc` — clear draft / go back from empty draft
@@ -288,7 +288,7 @@ while keeping the **terminal UI, transcript export, and local interaction loop**
 
 ---
 
-## Sessions and export
+## 🗂️ Sessions and export
 
 Sessions are exported as:
 
@@ -306,7 +306,7 @@ That makes it easy to:
 
 ---
 
-## Verification
+## ✅ Verification
 
 Run the test suite:
 
@@ -330,7 +330,7 @@ The smoke path verifies:
 
 ---
 
-## Local-only ECC setup
+## 🧩 Local-only ECC setup
 
 This repository vendors Everything Claude Code assets **project-locally**.
 
@@ -344,7 +344,7 @@ It does **not** modify global Codex defaults or your `~/.codex` setup unless you
 
 ---
 
-## Project status
+## 🛣️ Project status
 
 This project is actively evolving as a terminal-native social simulator.
 
@@ -358,6 +358,6 @@ Current directions include:
 
 ---
 
-## One-line pitch
+## 📣 One-line pitch
 
 **Your CLI boyfriend or girlfriend chats with you — sharpen your social skills and discover your charm. Wake up, nerds.**

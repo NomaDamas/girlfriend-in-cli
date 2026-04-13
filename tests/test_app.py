@@ -205,6 +205,29 @@ def test_render_trace_shows_idle_timers() -> None:
     assert "external-command" in rendered
 
 
+def test_render_trace_shows_coach_strength_and_weakness() -> None:
+    persona = _load_test_persona()
+    session = ConversationSession(persona=persona)
+    session.bootstrap()
+    session.last_coach_strength = "상대의 말을 기억해서 꺼내는 편"
+    session.last_coach_weakness = "질문이 너무 평면적임"
+    session.last_coach_feedback = "조금 더 구체적으로 물어보면 훨씬 좋다"
+    trace = RuntimeTrace(
+        persona_path=Path("personas/wonyoung-idol.json"),
+        provider_name="heuristic",
+        provider_model=None,
+        performance_mode="turbo",
+        voice_output_name="off",
+        voice_input_name="off",
+    )
+
+    rendered = _render_to_text(_render_trace(trace, persona, session))
+
+    assert "Strength" in rendered
+    assert "Weakness" in rendered
+    assert "질문이 너무 평면적임" in rendered
+
+
 def test_sync_provider_trace_exposes_remote_metadata() -> None:
     trace = RuntimeTrace(
         persona_path=Path("personas/wonyoung-idol.json"),
@@ -515,3 +538,33 @@ def test_show_ending_uses_configured_language(monkeypatch) -> None:
     _show_ending(_DummyLive(), Console(record=True, width=120), persona, session, "game_over", _DummyProvider())
 
     assert captured["kwargs"]["language"] == "ja"
+
+
+def test_show_ending_renders_strength_and_weakness(monkeypatch) -> None:
+    persona = _load_test_persona()
+    session = ConversationSession(persona=persona)
+    session.bootstrap()
+
+    class _DummyLive:
+        def stop(self):
+            return None
+
+    class _DummyProvider:
+        def generate_reply(self, *args, **kwargs):
+            return ProviderReply(
+                text='{"persona_final_words":"bye","ending_narrative":"end","report_title":"END","highlights":[],"user_strength":"기억을 살린 질문","user_weakness":"너무 짧은 단답","what_went_wrong":"톤이 아쉬웠다","rating":"B"}',
+                typing_seconds=0.1,
+                trace_note="",
+            )
+
+    monkeypatch.setattr("girlfriend_generator.i18n.get_language", lambda: "ko")
+    monkeypatch.setattr("girlfriend_generator.wide_input.wide_input", lambda _prompt="": "")
+    console = Console(record=True, width=120)
+
+    _show_ending(_DummyLive(), console, persona, session, "success", _DummyProvider())
+
+    rendered = console.export_text()
+    assert "Strength" in rendered
+    assert "Weakness" in rendered
+    assert "기억을 살린 질문" in rendered
+    assert "너무 짧은 단답" in rendered

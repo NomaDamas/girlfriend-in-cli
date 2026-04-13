@@ -102,6 +102,7 @@ def test_show_main_menu_returns_selected_persona_for_new_chat(monkeypatch) -> No
     args = cli.build_parser().parse_args([])
     persona_path = bundled_persona_dir() / "wonyoung-idol.json"
 
+    monkeypatch.setattr(cli, "_show_star_popup", lambda *_args, **_kwargs: None)
     monkeypatch.setattr("girlfriend_generator.selector.arrow_select", lambda *_args, **_kwargs: 0)
     monkeypatch.setattr(cli, "_pick_persona_interactive", lambda *_args, **_kwargs: persona_path)
     monkeypatch.setattr(
@@ -123,6 +124,7 @@ def test_show_main_menu_returns_selected_chat_room(monkeypatch, tmp_path: Path) 
     resume_path = tmp_path / "resume-session.json"
     resume_path.write_text("{}", encoding="utf-8")
 
+    monkeypatch.setattr(cli, "_show_star_popup", lambda *_args, **_kwargs: None)
     monkeypatch.setattr("girlfriend_generator.selector.arrow_select", lambda *_args, **_kwargs: 1)
     monkeypatch.setattr(cli, "_show_chat_rooms", lambda *_args, **_kwargs: (persona_path, resume_path))
     monkeypatch.setattr(
@@ -167,7 +169,7 @@ def test_build_logo_rows_keeps_title_swappable() -> None:
     plain_rows = [row.plain for row in rows]
 
     assert any("♡ terminal romance simulator ♡" in row for row in plain_rows)
-    assert any("v0.1.2" in row for row in plain_rows)
+    assert any("v0.1.3" in row for row in plain_rows)
 
 
 def test_build_main_menu_actions_shows_setup_guide_when_provider_needs_setup(monkeypatch) -> None:

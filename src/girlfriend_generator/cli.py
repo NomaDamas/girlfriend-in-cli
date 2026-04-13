@@ -19,6 +19,8 @@ from .remote import (
     fetch_remote_persona_by_slug,
     list_remote_personas,
 )
+from .updater import maybe_prompt_for_update
+from .version import __version__
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -136,6 +138,11 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="Resume a previous session from an exported JSON file.",
     )
+    parser.add_argument(
+        "--no-update-check",
+        action="store_true",
+        help="Skip release update checks on startup.",
+    )
     return parser
 
 
@@ -170,6 +177,12 @@ def main() -> int:
         for item in list_remote_personas(args.server_base_url):
             print(f"{item['slug']}\t{item['persona_id']}\t{item['display_name']}")
         return 0
+
+    if sys.stdin.isatty() and not args.no_update_check:
+        from rich.console import Console
+
+        if maybe_prompt_for_update(Console()):
+            return 0
 
     # Show main menu when run without flags in a TTY
     if not _has_any_flags(args) and sys.stdin.isatty() and bundled_personas:
@@ -414,7 +427,7 @@ def _build_logo_rows(
     rows = _build_filled_title_rows(title_text, style_variant=style_variant)
     rows.append(Text())
     rows.append(Text(title, style="bold italic #ffd6ec"))
-    rows.append(Text("v0.1.0", style="bold #d7c3ff"))
+    rows.append(Text(f"v{__version__}", style="bold #d7c3ff"))
     return rows
 
 

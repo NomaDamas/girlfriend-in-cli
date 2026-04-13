@@ -494,7 +494,7 @@ def _show_star_popup(console: "Console") -> None:  # type: ignore[name-defined]
     except (EOFError, KeyboardInterrupt):
         answer = "n"
 
-    if answer in ("y", "yes"):
+    if answer in ("", "y", "yes"):
         url = f"https://github.com/{_GITHUB_REPO}"
         try:
             webbrowser.open(url)
@@ -568,9 +568,12 @@ def _show_main_menu(
     # Play intro animation on first launch
     if not skip_intro:
         _play_intro(console)
-        _show_star_popup(console)
         _show_first_run_onboarding(console, args)
         console.clear()
+
+    # Always show star prompt before the main menu until the user actually stars.
+    _show_star_popup(console)
+    console.clear()
 
     # Centered logo block
     logo_group = Group(*[Align.center(r) for r in _build_logo_rows()])
@@ -594,7 +597,7 @@ def _show_main_menu(
     has_key = bool(_os.environ.get("OPENAI_API_KEY")) or bool(_os.environ.get("ANTHROPIC_API_KEY"))
     if not has_key:
         console.print(Align.center(Text(
-            "⚠ API key not set. Go to Settings > API Keys first.",
+            "⚠ LLM setup needed. Open Settings > API Keys. ChatGPT login-only OAuth is not available here yet.",
             style="bold yellow",
         )))
     console.print()

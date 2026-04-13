@@ -138,12 +138,34 @@ def test_show_main_menu_returns_selected_chat_room(monkeypatch, tmp_path: Path) 
     assert result == (args, resolve_persona_path(persona_path), resume_path)
 
 
-def test_build_logo_rows_adds_shadow_layers() -> None:
-    rows = cli._build_logo_rows()
+def test_build_filled_title_rows_uses_solid_blocks() -> None:
+    rows = cli._build_filled_title_rows("girlfriend in cli", style_variant="solid")
+
+    assert rows
+    assert any("█" in row.plain for row in rows)
+    assert any(row.plain.strip() == "" for row in rows)
+    title_rows = [row.plain for row in rows if row.plain.strip()]
+    assert not any("/" in row or "\\" in row or "_" in row for row in title_rows)
+
+
+def test_build_filled_title_rows_supports_gradient_variant() -> None:
+    rows = cli._build_filled_title_rows("girlfriend in cli", style_variant="gradient")
+
+    colored_spans = {
+        str(span.style)
+        for row in rows
+        for span in row.spans
+        if span.style and "#" in str(span.style)
+    }
+
+    assert len(colored_spans) >= 2
+
+
+def test_build_logo_rows_keeps_title_swappable() -> None:
+    rows = cli._build_logo_rows(title_text="test title", style_variant="solid")
 
     plain_rows = [row.plain for row in rows]
 
-    assert "♡ terminal romance simulator ♡" in plain_rows
-    assert " ♡ terminal romance simulator ♡" in plain_rows
-    assert any("______" in row for row in plain_rows)
-    assert any("/ __/____" in row for row in plain_rows)
+    assert any("♡ terminal romance simulator ♡" in row for row in plain_rows)
+    assert any("v0.1.0" in row for row in plain_rows)
+    assert any("█" in row for row in plain_rows)

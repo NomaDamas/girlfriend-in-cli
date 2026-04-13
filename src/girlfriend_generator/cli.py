@@ -271,14 +271,51 @@ _NERD_FRAMES = [
     "(✧ᴗ✧) ♡  Compiling feelings... 100%!",
 ]
 
-_LOGO_LINES = [
-    "          _      ______     _                __   _               ___ ",
-    "   ____ _(_)____/ / __/____(_)__  ____  ____/ /  (_)___     _____/ (_)",
-    "  / __ `/ / ___/ / /_/ ___/ / _ \\/ __ \\/ __  /  / / __ \\   / ___/ / / ",
-    " / /_/ / / /  / / __/ /  / /  __/ / / / /_/ /  / / / / /  / /__/ / /  ",
-    " \\__, /_/_/  /_/_/ /_/  /_/\\___/_/ /_/\\__,_/  /_/_/ /_/   \\___/_/_/   ",
-    "/____/                                                                 ",
-]
+_LANDING_TITLE_TEXT = "girlfriend in cli"
+_TITLE_STYLE_SOLID = "solid"
+_TITLE_STYLE_GRADIENT = "gradient"
+_LANDING_TITLE_STYLE = _TITLE_STYLE_GRADIENT
+_TITLE_BLOCK = "█"
+_TITLE_FONT = {
+    "A": [" ### ", "#   #", "#####", "#   #", "#   #"],
+    "B": ["#### ", "#   #", "#### ", "#   #", "#### "],
+    "C": [" ####", "#    ", "#    ", "#    ", " ####"],
+    "D": ["#### ", "#   #", "#   #", "#   #", "#### "],
+    "E": ["#####", "#    ", "#### ", "#    ", "#####"],
+    "F": ["#####", "#    ", "#### ", "#    ", "#    "],
+    "G": [" ####", "#    ", "# ###", "#   #", " ####"],
+    "H": ["#   #", "#   #", "#####", "#   #", "#   #"],
+    "I": ["#####", "  #  ", "  #  ", "  #  ", "#####"],
+    "J": ["#####", "   # ", "   # ", "#  # ", " ##  "],
+    "K": ["#  ##", "# ## ", "##   ", "# ## ", "#  ##"],
+    "L": ["#    ", "#    ", "#    ", "#    ", "#####"],
+    "M": ["#   #", "## ##", "# # #", "#   #", "#   #"],
+    "N": ["#   #", "##  #", "# # #", "#  ##", "#   #"],
+    "O": [" ### ", "#   #", "#   #", "#   #", " ### "],
+    "P": ["#### ", "#   #", "#### ", "#    ", "#    "],
+    "Q": [" ### ", "#   #", "#   #", "#  ##", " ####"],
+    "R": ["#### ", "#   #", "#### ", "#  # ", "#   #"],
+    "S": [" ####", "#    ", " ### ", "    #", "#### "],
+    "T": ["#####", "  #  ", "  #  ", "  #  ", "  #  "],
+    "U": ["#   #", "#   #", "#   #", "#   #", " ### "],
+    "V": ["#   #", "#   #", "#   #", " # # ", "  #  "],
+    "W": ["#   #", "#   #", "# # #", "## ##", "#   #"],
+    "X": ["#   #", " # # ", "  #  ", " # # ", "#   #"],
+    "Y": ["#   #", " # # ", "  #  ", "  #  ", "  #  "],
+    "Z": ["#####", "   # ", "  #  ", " #   ", "#####"],
+    "0": [" ### ", "#  ##", "# # #", "##  #", " ### "],
+    "1": ["  #  ", " ##  ", "  #  ", "  #  ", " ### "],
+    "2": [" ### ", "#   #", "   # ", "  #  ", "#####"],
+    "3": ["#### ", "    #", " ### ", "    #", "#### "],
+    "4": ["#   #", "#   #", "#####", "    #", "    #"],
+    "5": ["#####", "#    ", "#### ", "    #", "#### "],
+    "6": [" ####", "#    ", "#### ", "#   #", " ### "],
+    "7": ["#####", "   # ", "  #  ", " #   ", "#    "],
+    "8": [" ### ", "#   #", " ### ", "#   #", " ### "],
+    "9": [" ### ", "#   #", " ####", "    #", " ### "],
+    " ": ["   ", "   ", "   ", "   ", "   "],
+    "-": ["     ", "     ", "#####", "     ", "     "],
+}
 
 _MODE_ICONS = {
     "girlfriend": "💕",
@@ -292,10 +329,29 @@ _PERF_ICONS = {
 }
 
 
-def _build_logo_rows() -> list["Text"]:  # type: ignore[name-defined]
-    from rich.text import Text
+def _split_title_text(title_text: str, max_chars_per_line: int = 12) -> list[str]:
+    words = title_text.split()
+    if not words:
+        return [""]
 
-    face_colors = [
+    lines: list[str] = []
+    current = words[0]
+    for word in words[1:]:
+        candidate = f"{current} {word}"
+        if len(candidate) <= max_chars_per_line:
+            current = candidate
+        else:
+            lines.append(current)
+            current = word
+    lines.append(current)
+    return lines
+
+
+def _title_color_for(style_variant: str, row: int, col: int, width: int) -> str:
+    if style_variant == _TITLE_STYLE_SOLID:
+        return "#ff66b3"
+
+    gradient_palette = [
         "#ff7eb6",
         "#ff75c3",
         "#ff6ad5",
@@ -305,20 +361,59 @@ def _build_logo_rows() -> list["Text"]:  # type: ignore[name-defined]
         "#5ea6ff",
         "#4fc3ff",
     ]
-    shadow_color = "#4a214f"
-    caption_face = "#ffd6ec"
+    if width <= 1:
+        return gradient_palette[row % len(gradient_palette)]
+    index = min(
+        len(gradient_palette) - 1,
+        int((col / max(1, width - 1)) * (len(gradient_palette) - 1)),
+    )
+    return gradient_palette[(index + row) % len(gradient_palette)]
+
+
+def _compose_bitmap_line(text: str) -> list[str]:
+    glyph_rows = [""] * 5
+    for character in text.upper():
+        glyph = _TITLE_FONT.get(character, _TITLE_FONT[" "])
+        for row_index, glyph_row in enumerate(glyph):
+            glyph_rows[row_index] += glyph_row + " "
+    return [row.rstrip() for row in glyph_rows]
+
+
+def _build_filled_title_rows(
+    title_text: str,
+    style_variant: str = _LANDING_TITLE_STYLE,
+) -> list["Text"]:  # type: ignore[name-defined]
+    from rich.text import Text
 
     rows: list[Text] = []
-    for index, line in enumerate(_LOGO_LINES):
-        color = face_colors[index % len(face_colors)]
-        rows.append(Text(f" {line}", style=f"bold {shadow_color}"))
-        rows.append(Text(line, style=f"bold {color}"))
+    title_lines = _split_title_text(title_text)
+    for line_index, line in enumerate(title_lines):
+        bitmap_rows = _compose_bitmap_line(line)
+        max_width = max(len(bitmap_row) for bitmap_row in bitmap_rows) if bitmap_rows else 0
+        for bitmap_row in bitmap_rows:
+            text_row = Text()
+            for col_index, pixel in enumerate(bitmap_row):
+                if pixel != " ":
+                    color = _title_color_for(style_variant, line_index, col_index, max_width)
+                    text_row.append(_TITLE_BLOCK, style=f"bold {color}")
+                else:
+                    text_row.append(" ")
+            rows.append(text_row)
+        if line_index < len(title_lines) - 1:
+            rows.append(Text())
+    return rows
+
+
+def _build_logo_rows(
+    title_text: str = _LANDING_TITLE_TEXT,
+    style_variant: str = _LANDING_TITLE_STYLE,
+) -> list["Text"]:  # type: ignore[name-defined]
+    from rich.text import Text
 
     title = "♡ terminal romance simulator ♡"
+    rows = _build_filled_title_rows(title_text, style_variant=style_variant)
     rows.append(Text())
-    rows.append(Text(f" {title}", style=f"bold {shadow_color}"))
-    rows.append(Text(title, style=f"bold italic {caption_face}"))
-    rows.append(Text(" v0.1.0", style="grey35"))
+    rows.append(Text(title, style="bold italic #ffd6ec"))
     rows.append(Text("v0.1.0", style="bold #d7c3ff"))
     return rows
 

@@ -460,7 +460,7 @@ def _show_main_menu(
             if result is None:
                 console.clear()
                 fresh = discover_personas(bundled_persona_dir()) if bundled_persona_dir().exists() else []
-            return _show_main_menu(fresh, args, skip_intro=True)
+                return _show_main_menu(fresh, args, skip_intro=True)
             return args, resolve_persona_path(result), None
 
         if choice == 1:  # Chat Rooms
@@ -469,7 +469,7 @@ def _show_main_menu(
             if room_result is None:
                 console.clear()
                 fresh = discover_personas(bundled_persona_dir()) if bundled_persona_dir().exists() else []
-            return _show_main_menu(fresh, args, skip_intro=True)
+                return _show_main_menu(fresh, args, skip_intro=True)
             persona_path, resume_path = room_result
             return args, resolve_persona_path(persona_path), resume_path
 

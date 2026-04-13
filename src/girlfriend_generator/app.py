@@ -229,9 +229,7 @@ def run_chat_app(config: AppConfig) -> int:
                 if pending_delivery and time.monotonic() >= pending_delivery.due_at:
                     delivered_text = pending_delivery.text
                     if pending_delivery.kind == "nudge":
-                        # Use LLM-generated text, just update session state
-                        session.add_assistant_message(delivered_text, schedule_nudge=True)
-                        session.nudge_count += 1
+                        session.deliver_nudge(delivered_text)
                     elif pending_delivery.kind == "initiative":
                         session.consume_initiative(delivered_text)
                     else:
@@ -260,11 +258,11 @@ def run_chat_app(config: AppConfig) -> int:
                 if session.affection_score <= 0 and not session.ended:
                     session.ended = True
                     _show_ending(live, console, persona, session, "game_over", provider)
-                    return 0
+                    return 2
                 if session.affection_score >= 100 and not session.ended:
                     session.ended = True
                     _show_ending(live, console, persona, session, "success", provider)
-                    return 0
+                    return 2
 
                 # LLM-scheduled proactive follow-up (highest priority)
                 proactive_ready = (
@@ -680,11 +678,13 @@ def _show_ending(
         "}"
     )
     try:
+        from .i18n import get_language
         ending_reply = provider.generate_reply(
             persona, session.recent_history(), ending_prompt,
             session.affection_score, session.mood.current,
             difficulty=persona.difficulty,
-            language=getattr(session, "language", "ko"),
+            language=get_language(),
+            special_mode=persona.special_mode,
         )
         import json as _json
         raw = ending_reply.text

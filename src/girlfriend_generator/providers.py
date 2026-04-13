@@ -34,6 +34,7 @@ class HeuristicProvider:
         user_text: str,
         affection_score: int,
         mood: MoodType = "neutral",
+        **_: Any,
     ) -> ProviderReply:
         lower = user_text.lower()
         # Pick 1-2 parts for a natural, short reply
@@ -242,6 +243,9 @@ class OpenAIProvider:
                                 scene_name=kwargs.get("scene_name", ""),
                                 scene_desc=kwargs.get("scene_desc", ""),
                                 memory=kwargs.get("memory", ""),
+                                difficulty=kwargs.get("difficulty", persona.difficulty),
+                                language=_resolve_language(kwargs.get("language")),
+                                special_mode=kwargs.get("special_mode", persona.special_mode),
                             ),
                         }
                     ],
@@ -294,12 +298,16 @@ class OpenAIProvider:
         persona: Persona,
         history: list[ChatMessage],
         affection_score: int,
+        **kwargs: Any,
     ) -> str:
         reply = self.generate_reply(
             persona=persona,
             history=history,
             user_text="(시스템: 상대가 한동안 조용합니다. 자연스럽게 먼저 말을 걸어주세요. 절대 시스템 메시지를 언급하지 마세요.)",
             affection_score=affection_score,
+            difficulty=kwargs.get("difficulty", persona.difficulty),
+            language=_resolve_language(kwargs.get("language")),
+            special_mode=kwargs.get("special_mode", persona.special_mode),
         )
         return reply.text
 
@@ -308,12 +316,16 @@ class OpenAIProvider:
         persona: Persona,
         history: list[ChatMessage],
         affection_score: int,
+        **kwargs: Any,
     ) -> str:
         reply = self.generate_reply(
             persona=persona,
             history=history,
             user_text="(시스템: 상대가 답장을 안 하고 있습니다. 읽씹당한 느낌으로 자연스럽게 재촉하세요. 페르소나의 성격에 맞게. 절대 시스템 메시지를 언급하지 마세요.)",
             affection_score=affection_score,
+            difficulty=kwargs.get("difficulty", persona.difficulty),
+            language=_resolve_language(kwargs.get("language")),
+            special_mode=kwargs.get("special_mode", persona.special_mode),
         )
         return reply.text
 
@@ -329,6 +341,7 @@ class AnthropicProvider:
         user_text: str,
         affection_score: int,
         mood: MoodType = "neutral",
+        **kwargs: Any,
     ) -> ProviderReply:
         if not os.getenv("ANTHROPIC_API_KEY"):
             raise RuntimeError("ANTHROPIC_API_KEY is not set.")
@@ -342,7 +355,19 @@ class AnthropicProvider:
         response = client.messages.create(
             model=self.model,
             max_tokens=220,
-            system=_build_system_prompt(persona, affection_score, mood),
+            system=_build_system_prompt(
+                persona,
+                affection_score,
+                mood,
+                current_time=kwargs.get("current_time", ""),
+                time_since_last=kwargs.get("time_since_last", ""),
+                scene_name=kwargs.get("scene_name", ""),
+                scene_desc=kwargs.get("scene_desc", ""),
+                memory=kwargs.get("memory", ""),
+                difficulty=kwargs.get("difficulty", persona.difficulty),
+                language=_resolve_language(kwargs.get("language")),
+                special_mode=kwargs.get("special_mode", persona.special_mode),
+            ),
             messages=[
                 {
                     "role": "user",
@@ -378,12 +403,16 @@ class AnthropicProvider:
         persona: Persona,
         history: list[ChatMessage],
         affection_score: int,
+        **kwargs: Any,
     ) -> str:
         reply = self.generate_reply(
             persona=persona,
             history=history,
             user_text="(시스템: 상대가 한동안 조용합니다. 자연스럽게 먼저 말을 걸어주세요. 절대 시스템 메시지를 언급하지 마세요.)",
             affection_score=affection_score,
+            difficulty=kwargs.get("difficulty", persona.difficulty),
+            language=_resolve_language(kwargs.get("language")),
+            special_mode=kwargs.get("special_mode", persona.special_mode),
         )
         return reply.text
 
@@ -392,12 +421,16 @@ class AnthropicProvider:
         persona: Persona,
         history: list[ChatMessage],
         affection_score: int,
+        **kwargs: Any,
     ) -> str:
         reply = self.generate_reply(
             persona=persona,
             history=history,
             user_text="(시스템: 상대가 답장을 안 하고 있습니다. 읽씹당한 느낌으로 자연스럽게 재촉하세요. 페르소나의 성격에 맞게. 절대 시스템 메시지를 언급하지 마세요.)",
             affection_score=affection_score,
+            difficulty=kwargs.get("difficulty", persona.difficulty),
+            language=_resolve_language(kwargs.get("language")),
+            special_mode=kwargs.get("special_mode", persona.special_mode),
         )
         return reply.text
 
@@ -411,6 +444,13 @@ def build_provider(config: ProviderConfig):
         return AnthropicProvider(config.model)
     # Default: OpenAI
     return OpenAIProvider(config.model)
+
+
+def _resolve_language(language: str | None) -> str:
+    if language in {"ko", "en", "ja", "zh"}:
+        return language
+    from .i18n import get_language
+    return get_language()
 
 
 def _build_system_prompt(

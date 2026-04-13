@@ -3,7 +3,7 @@ import sys
 from pathlib import Path
 
 from girlfriend_generator import cli
-from girlfriend_generator.paths import bundled_persona_dir, project_root
+from girlfriend_generator.paths import bundled_persona_dir, project_root, resolve_persona_path
 
 
 def test_main_passes_resolved_runtime_config_to_app(
@@ -96,3 +96,43 @@ def test_list_personas_prints_bundled_personas_without_launching_app(
     assert exit_code == 0
     assert "wonyoung-idol.json" in output
     assert "dua-international.json" in output
+
+
+def test_show_main_menu_returns_selected_persona_for_new_chat(monkeypatch) -> None:
+    args = cli.build_parser().parse_args([])
+    persona_path = bundled_persona_dir() / "wonyoung-idol.json"
+
+    monkeypatch.setattr("girlfriend_generator.selector.arrow_select", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(cli, "_pick_persona_interactive", lambda *_args, **_kwargs: persona_path)
+    monkeypatch.setattr(
+        cli,
+        "discover_personas",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("discover_personas should not run when a persona is selected")
+        ),
+    )
+
+    result = cli._show_main_menu([persona_path], args, skip_intro=True)
+
+    assert result == (args, resolve_persona_path(persona_path), None)
+
+
+def test_show_main_menu_returns_selected_chat_room(monkeypatch, tmp_path: Path) -> None:
+    args = cli.build_parser().parse_args([])
+    persona_path = bundled_persona_dir() / "wonyoung-idol.json"
+    resume_path = tmp_path / "resume-session.json"
+    resume_path.write_text("{}", encoding="utf-8")
+
+    monkeypatch.setattr("girlfriend_generator.selector.arrow_select", lambda *_args, **_kwargs: 1)
+    monkeypatch.setattr(cli, "_show_chat_rooms", lambda *_args, **_kwargs: (persona_path, resume_path))
+    monkeypatch.setattr(
+        cli,
+        "discover_personas",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("discover_personas should not run when a chat room is selected")
+        ),
+    )
+
+    result = cli._show_main_menu([persona_path], args, skip_intro=True)
+
+    assert result == (args, resolve_persona_path(persona_path), resume_path)

@@ -10,6 +10,7 @@ from girlfriend_generator.app import (
     _handle_key,
     _render_screen,
     _render_trace,
+    _show_ending,
     _sync_provider_trace,
     run_chat_app,
 )
@@ -387,3 +388,130 @@ def test_run_chat_app_returns_clean_error_without_tty(
     assert exit_code == 1
     assert "requires a TTY" in output
     assert export_calls == []
+
+
+def test_run_chat_app_returns_back_signal_after_ending_screen(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    persona = _load_test_persona()
+    ending_calls: list[str] = []
+
+    class FakeSession:
+        def __init__(self, persona):
+            self.persona = persona
+            self.messages = []
+            self.affection_score = 0
+            self.awaiting_user_reply = False
+            self.ended = False
+            self.mood = type("Mood", (), {"current": "neutral"})()
+            self.proactive_due_at = None
+
+        def bootstrap(self) -> None:
+            return None
+
+        def seconds_until_nudge(self, _now=None):
+            return None
+
+        def seconds_until_initiative(self, _now=None):
+            return None
+
+        def nudge_due(self, _now=None) -> bool:
+            return False
+
+        def initiative_due(self, _now=None) -> bool:
+            return False
+
+    class DummyKeyboard:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def poll(self, _timeout):
+            return None
+
+    class DummyLive:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def update(self, *_args, **_kwargs):
+            return None
+
+        def stop(self):
+            return None
+
+    class DummyVoice:
+        name = "off"
+
+        def speak(self, _text):
+            return None
+
+    class DummyMusic:
+        def update_mood(self, _mood):
+            return None
+
+        def stop(self):
+            return None
+
+    monkeypatch.setattr("girlfriend_generator.app._supports_interactive_chat", lambda: True)
+    monkeypatch.setattr("girlfriend_generator.app.ConversationSession", FakeSession)
+    monkeypatch.setattr("girlfriend_generator.app.build_provider", lambda _config: object())
+    monkeypatch.setattr("girlfriend_generator.app.build_voice_output", lambda _enabled: DummyVoice())
+    monkeypatch.setattr("girlfriend_generator.app.build_voice_input", lambda _cmd: DummyVoice())
+    monkeypatch.setattr("girlfriend_generator.app.build_music_player", lambda: DummyMusic())
+    monkeypatch.setattr("girlfriend_generator.app.load_scenes", lambda: [])
+    monkeypatch.setattr("girlfriend_generator.app.RawKeyboard", DummyKeyboard)
+    monkeypatch.setattr("girlfriend_generator.app.Live", DummyLive)
+    monkeypatch.setattr("girlfriend_generator.app._render_screen", lambda **_kwargs: "screen")
+    monkeypatch.setattr(
+        "girlfriend_generator.app._show_ending",
+        lambda *_args, **_kwargs: ending_calls.append("shown"),
+    )
+
+    exit_code = run_chat_app(
+        AppConfig(
+            persona_path=tmp_path / "unused.json",
+            persona_override=persona,
+            session_dir=tmp_path,
+            export_on_exit=False,
+        )
+    )
+
+    assert exit_code == 2
+    assert ending_calls == ["shown"]
+
+
+def test_show_ending_uses_configured_language(monkeypatch) -> None:
+    persona = _load_test_persona()
+    session = ConversationSession(persona=persona)
+    session.bootstrap()
+    session.affection_score = 0
+    captured = {}
+
+    class _DummyLive:
+        def stop(self):
+            return None
+
+    class _DummyProvider:
+        def generate_reply(self, *args, **kwargs):
+            captured["kwargs"] = kwargs
+            return ProviderReply(
+                text='{"persona_final_words":"bye","ending_narrative":"end","report_title":"END","highlights":[],"what_went_wrong":"x","rating":"F"}',
+                typing_seconds=0.1,
+                trace_note="",
+            )
+
+    monkeypatch.setattr("girlfriend_generator.i18n.get_language", lambda: "ja")
+    monkeypatch.setattr("girlfriend_generator.wide_input.wide_input", lambda _prompt="": "")
+
+    _show_ending(_DummyLive(), Console(record=True, width=120), persona, session, "game_over", _DummyProvider())
+
+    assert captured["kwargs"]["language"] == "ja"

@@ -35,6 +35,7 @@ def test_nudge_due_and_consumed_once() -> None:
     start = utc_now()
     session.bootstrap(now=start)
     due_time = start + timedelta(seconds=persona.nudge_policy.idle_after_seconds)
+    starting_affection = session.affection_score
 
     assert session.nudge_due(due_time) is True
 
@@ -43,6 +44,7 @@ def test_nudge_due_and_consumed_once() -> None:
     assert text == persona.nudge_policy.templates[0]
     assert session.nudge_count == 1
     assert session.awaiting_user_reply is True
+    assert session.affection_score == starting_affection - 2
 
 
 def test_tick_emits_idle_nudge_when_reply_is_overdue() -> None:

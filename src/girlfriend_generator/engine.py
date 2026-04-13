@@ -91,15 +91,24 @@ class ConversationSession:
         )
         return self.persona.nudge_policy.templates[template_index]
 
-    def consume_nudge(self, now: datetime | None = None) -> str:
+    def deliver_nudge(self, text: str, now: datetime | None = None) -> str:
         now = now or utc_now()
-        text = self.next_nudge_text()
         self.messages.append(ChatMessage(role="assistant", text=text, created_at=now))
         self.nudge_count += 1
+        penalty = min(8, 2 + (self.nudge_count - 1) * 2)
+        self.affection_score = max(0, self.affection_score - penalty)
+        if self.nudge_count == 1:
+            self.mood.shift("worried", intensity=0.55)
+        else:
+            self.mood.shift("sulky", intensity=0.7)
+        self.awaiting_user_reply = True
         self.nudge_due_at = now + timedelta(
             seconds=self.persona.nudge_policy.follow_up_after_seconds
         )
         return text
+
+    def consume_nudge(self, now: datetime | None = None) -> str:
+        return self.deliver_nudge(self.next_nudge_text(), now)
 
     def schedule_initiative(self, now: datetime | None = None) -> None:
         now = now or utc_now()

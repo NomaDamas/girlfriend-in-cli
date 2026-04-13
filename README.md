@@ -396,24 +396,6 @@ It does **not** modify global Codex defaults or your `~/.codex` setup unless you
 
 ---
 
-## 🛣️ Project status
-
-This project is actively evolving as a terminal-native social simulator.
-
-Current directions include:
-
-- better landing page / title rendering
-- more playful main-menu flows
-- persona generation and editing improvements
-- random chat discovery flows
-- stronger remote persona pipelines
-
----
-
-## 📣 One-line pitch
-
-**Your CLI boyfriend or girlfriend chats with you — sharpen your social skills and discover your charm. Wake up, nerds.**
-
 ---
 
 ## ⚖️ License

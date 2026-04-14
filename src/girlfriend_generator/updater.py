@@ -15,6 +15,8 @@ from .version import __version__
 
 LATEST_RELEASE_URL = "https://api.github.com/repos/NomaDamas/girlfriend-in-cli/releases/latest"
 DEFAULT_PACKAGE_NAME = "girlfriend-in-cli"
+DEFAULT_TAP_NAME = "NomaDamas/girlfriend-in-cli"
+DEFAULT_TAP_URL = "https://github.com/NomaDamas/brew-girlfriend-in-cli.git"
 
 
 @dataclass(slots=True)
@@ -30,6 +32,8 @@ class InstallContext:
     method: str
     package_name: str = DEFAULT_PACKAGE_NAME
     repo_root: Path | None = None
+    tap_name: str = DEFAULT_TAP_NAME
+    tap_url: str = DEFAULT_TAP_URL
 
 
 def normalize_version(value: str) -> tuple[int, ...]:
@@ -98,6 +102,9 @@ def build_update_command(context: InstallContext, tag_name: str) -> list[str] | 
 
 
 def run_update_command(context: InstallContext, tag_name: str) -> tuple[bool, str]:
+    if context.method == "brew":
+        return _run_brew_update(context)
+
     command = build_update_command(context, tag_name)
     if command is None:
         return False, "No supported update command for this install."
@@ -117,6 +124,40 @@ def run_update_command(context: InstallContext, tag_name: str) -> tuple[bool, st
         detail = (completed.stderr or completed.stdout or "").strip()
         return False, detail or f"Update failed with exit code {completed.returncode}"
     return True, (completed.stdout or "Updated successfully.").strip()
+
+
+def _run_brew_update(context: InstallContext) -> tuple[bool, str]:
+    refresh_commands = [
+        ["brew", "update"],
+        ["brew", "untap", context.tap_name],
+        ["brew", "tap", context.tap_name, context.tap_url],
+        ["brew", "upgrade", context.package_name],
+    ]
+    outputs: list[str] = []
+
+    for command in refresh_commands:
+        completed = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if completed.returncode != 0 and command[:2] == ["brew", "untap"]:
+            continue
+        if completed.returncode != 0:
+            detail = (completed.stderr or completed.stdout or "").strip()
+            recovery = (
+                f"Try running manually:\n"
+                f"brew update\n"
+                f"brew untap {context.tap_name} || true\n"
+                f"brew tap {context.tap_name} {context.tap_url}\n"
+                f"brew upgrade {context.package_name} || brew install {context.package_name}"
+            )
+            return False, f"{detail}\n\n{recovery}".strip()
+        if completed.stdout.strip():
+            outputs.append(completed.stdout.strip())
+
+    return True, "\n".join(outputs) if outputs else "Updated successfully via Homebrew."
 
 
 def maybe_prompt_for_update(console: "Console") -> bool:  # type: ignore[name-defined]

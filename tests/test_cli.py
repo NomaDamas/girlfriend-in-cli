@@ -199,7 +199,7 @@ def test_build_logo_rows_keeps_title_swappable() -> None:
     plain_rows = [row.plain for row in rows]
 
     assert any("♡ terminal romance simulator ♡" in row for row in plain_rows)
-    assert any("v0.1.3.3" in row for row in plain_rows)
+    assert any("v0.1.3.4" in row for row in plain_rows)
 
 
 def test_build_main_menu_actions_shows_setup_guide_when_provider_needs_setup(monkeypatch) -> None:

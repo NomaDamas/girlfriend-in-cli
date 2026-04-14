@@ -47,11 +47,6 @@ def build_formula(tag: str, sha256: str) -> str:
 
   def install
     virtualenv_install_with_resources
-    bin.env_script_all_files(
-      libexec/"bin",
-      GIRLFRIEND_GENERATOR_INSTALL_METHOD: "brew",
-      GIRLFRIEND_GENERATOR_PACKAGE_NAME: "girlfriend-in-cli"
-    )
   end
 
   test do

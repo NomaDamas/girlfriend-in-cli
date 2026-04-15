@@ -4,6 +4,7 @@ import os
 import random
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlparse, urlunparse
 
 from .models import ChatMessage, MoodType, Persona, ProviderReply
 from .remote import RemoteProvider
@@ -16,6 +17,7 @@ class ProviderConfig:
     performance_mode: str = "turbo"
     server_base_url: str | None = None
     persona_id: str | None = None
+    ollama_base_url: str | None = None
 
 
 class HeuristicProvider:
@@ -265,6 +267,14 @@ class OpenAIProvider:
     def __init__(self, model: str | None = None) -> None:
         self.model = model or "gpt-4.1-mini"
 
+    def _build_client(self):
+        if not os.getenv("OPENAI_API_KEY"):
+            raise RuntimeError("OPENAI_API_KEY is not set.")
+        return _build_openai_client()
+
+    def _trace_label(self) -> str:
+        return "openai"
+
     def generate_reply(
         self,
         persona: Persona,
@@ -274,13 +284,7 @@ class OpenAIProvider:
         mood: MoodType = "neutral",
         **kwargs: Any,
     ) -> ProviderReply:
-        if not os.getenv("OPENAI_API_KEY"):
-            raise RuntimeError("OPENAI_API_KEY is not set.")
-        try:
-            from openai import OpenAI
-        except ImportError as exc:
-            raise RuntimeError("Install the openai package to use this provider.") from exc
-        client = OpenAI()
+        client = self._build_client()
         response = client.responses.create(
             model=self.model,
             temperature=1.0,
@@ -335,7 +339,7 @@ class OpenAIProvider:
                 persona.typing.max_seconds,
                 max(persona.typing.min_seconds, len(clean_text) / 18.0),
             ),
-            trace_note=f"openai:{self.model} mood={mood}",
+            trace_note=f"{self._trace_label()}:{self.model} mood={mood}",
             affection_delta=delta,
             mood=str(parsed.get("mood", "")),
             memory_update=str(parsed.get("memory_update", "")),
@@ -387,6 +391,22 @@ class OpenAIProvider:
             special_mode=kwargs.get("special_mode", persona.special_mode),
         )
         return reply.text
+
+
+class OllamaProvider(OpenAIProvider):
+    def __init__(
+        self,
+        model: str | None = None,
+        base_url: str | None = None,
+    ) -> None:
+        self.model = model or "llama3.2"
+        self.base_url = _normalize_ollama_base_url(base_url)
+
+    def _build_client(self):
+        return _build_openai_client(base_url=self.base_url, api_key="ollama")
+
+    def _trace_label(self) -> str:
+        return "ollama"
 
 
 class AnthropicProvider:
@@ -504,10 +524,41 @@ def build_provider(config: ProviderConfig):
         if not config.server_base_url or not config.persona_id:
             raise ValueError("Remote provider requires server_base_url and persona_id.")
         return RemoteProvider(config.server_base_url, config.persona_id)
+    if config.name == "ollama":
+        return OllamaProvider(config.model, config.ollama_base_url)
     if config.name == "anthropic":
         return AnthropicProvider(config.model)
     # Default: OpenAI
     return OpenAIProvider(config.model)
+
+
+def _build_openai_client(*, base_url: str | None = None, api_key: str | None = None):
+    try:
+        from openai import OpenAI
+    except ImportError as exc:
+        raise RuntimeError(
+            "Install the openai package to use OpenAI/Ollama providers."
+        ) from exc
+
+    client_kwargs: dict[str, Any] = {}
+    if base_url:
+        client_kwargs["base_url"] = base_url
+    if api_key:
+        client_kwargs["api_key"] = api_key
+    return OpenAI(**client_kwargs)
+
+
+def _normalize_ollama_base_url(base_url: str | None) -> str:
+    raw = (base_url or "http://127.0.0.1:11434/v1").strip()
+    if "://" not in raw:
+        raw = f"http://{raw}"
+
+    parsed = urlparse(raw)
+    path = parsed.path.rstrip("/")
+    if not path:
+        path = "/v1"
+
+    return urlunparse(parsed._replace(path=path, params="", query="", fragment=""))
 
 
 def _resolve_language(language: str | None) -> str:

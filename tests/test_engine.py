@@ -87,6 +87,20 @@ def test_openai_provider_is_default() -> None:
     assert isinstance(provider, OpenAIProvider)
 
 
+def test_build_provider_supports_ollama() -> None:
+    from girlfriend_generator.providers import build_provider, OllamaProvider, ProviderConfig
+
+    provider = build_provider(
+        ProviderConfig(
+            name="ollama",
+            model="llama3.2",
+            ollama_base_url="http://127.0.0.1:11434",
+        )
+    )
+
+    assert isinstance(provider, OllamaProvider)
+
+
 def test_bootstrap_greeting_uses_configured_language(monkeypatch) -> None:
     persona = load_persona(Path("personas/wonyoung-idol.json"))
     session = ConversationSession(persona=persona)

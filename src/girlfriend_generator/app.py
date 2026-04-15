@@ -41,6 +41,7 @@ class AppConfig:
     persona_override: Persona | None = None
     provider_name: str = "heuristic"
     provider_model: str | None = None
+    ollama_base_url: str | None = None
     server_base_url: str | None = None
     persona_id: str | None = None
     performance_mode: str = "turbo"
@@ -154,6 +155,7 @@ def run_chat_app(config: AppConfig) -> int:
             performance_mode=config.performance_mode,
             server_base_url=config.server_base_url,
             persona_id=config.persona_id,
+            ollama_base_url=config.ollama_base_url,
         )
     )
     voice_output = build_voice_output(config.voice_output)

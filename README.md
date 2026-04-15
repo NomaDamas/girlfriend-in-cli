@@ -141,29 +141,35 @@ girlfriend-in-cli
 From the repository root:
 
 ```bash
-bash scripts/bootstrap.sh
-source .venv/bin/activate
-mygf
+uv sync --extra dev
+uv run mygf
 ```
 
 That gives you:
 
-- ✅ a local virtualenv
-- ✅ an editable install
-- ✅ the `mygf` shortcut
+- ✅ a local `.venv`
+- ✅ editable project install from `pyproject.toml`
+- ✅ the `mygf` shortcut via `uv run`
 - ✅ the `girlfriend-in-cli` entrypoint
 - ✅ bundled persona discovery
+
+If you prefer to enter the virtualenv manually:
+
+```bash
+source .venv/bin/activate
+mygf
+```
 
 If you want to run tests:
 
 ```bash
-python3 -m pytest
+uv run pytest
 ```
 
 If you want a full smoke check:
 
 ```bash
-bash scripts/smoke.sh
+uv run bash scripts/smoke.sh
 ```
 
 ### Release-aware updates
@@ -193,7 +199,8 @@ When the main menu opens, you can:
 - open Persona Studio
 - change provider / language / performance settings
 
-If you want model-backed chat, set an API key first in your shell or via the in-app Settings menu.
+If you want cloud model-backed chat, set an API key first in your shell or via the in-app Settings menu.
+For local inference, you can also use Ollama with a local endpoint + model.
 
 Examples:
 
@@ -207,6 +214,12 @@ or
 ```bash
 export ANTHROPIC_API_KEY=your_key_here
 mygf --provider anthropic
+```
+
+or
+
+```bash
+mygf --provider ollama --model llama3.2 --ollama-base-url http://127.0.0.1:11434/v1
 ```
 
 ---
@@ -259,6 +272,12 @@ Use Anthropic instead of OpenAI:
 
 ```bash
 mygf --provider anthropic
+```
+
+Use a local Ollama model:
+
+```bash
+mygf --provider ollama --model llama3.2
 ```
 
 Use a specific performance profile:

@@ -26,7 +26,7 @@ git fetch --tags origin
 git rev-parse --verify "refs/tags/$TAG" >/dev/null
 git checkout --detach "$TAG"
 
-bash scripts/bootstrap.sh >/dev/null
+uv sync --extra dev >/dev/null
 
 trap - ERR
 echo "Updated to $TAG"

@@ -3,6 +3,7 @@ import sys
 from pathlib import Path
 
 from girlfriend_generator import cli
+from girlfriend_generator import i18n
 from girlfriend_generator.i18n import get_language
 from girlfriend_generator.paths import bundled_persona_dir, project_root, resolve_persona_path
 
@@ -12,6 +13,7 @@ def test_main_passes_resolved_runtime_config_to_app(
     tmp_path: Path,
 ) -> None:
     captured = {}
+    monkeypatch.setattr(i18n, "_PREFS_PATH", tmp_path / "prefs.json")
 
     def fake_run_chat_app(config):
         captured["config"] = config
@@ -59,6 +61,7 @@ def test_main_defaults_to_bundled_persona_outside_repository(
     tmp_path: Path,
 ) -> None:
     captured = {}
+    monkeypatch.setattr(i18n, "_PREFS_PATH", tmp_path / "prefs.json")
 
     def fake_run_chat_app(config):
         captured["config"] = config
@@ -77,6 +80,64 @@ def test_main_defaults_to_bundled_persona_outside_repository(
     assert captured["config"].performance_mode == "turbo"
     assert captured["config"].show_trace is True
     assert captured["config"].export_on_exit is True
+
+
+def test_main_passes_ollama_runtime_config_to_app(monkeypatch, tmp_path: Path) -> None:
+    captured = {}
+
+    def fake_run_chat_app(config):
+        captured["config"] = config
+        return 0
+
+    monkeypatch.setattr(cli, "run_chat_app", fake_run_chat_app)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "girlfriend-generator",
+            "--provider",
+            "ollama",
+            "--model",
+            "llama3.2",
+            "--ollama-base-url",
+            "http://127.0.0.1:11434/v1",
+        ],
+    )
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main()
+
+    assert exit_code == 0
+    assert captured["config"].provider_name == "ollama"
+    assert captured["config"].provider_model == "llama3.2"
+    assert captured["config"].ollama_base_url == "http://127.0.0.1:11434/v1"
+
+
+def test_main_uses_saved_provider_preferences(monkeypatch, tmp_path: Path) -> None:
+    captured = {}
+    prefs_path = tmp_path / "prefs.json"
+    prefs_path.write_text(
+        '{"provider":"ollama","provider_model":"gemma4:26b","ollama_base_url":"http://127.0.0.1:11434/v1","performance":"balanced","no_trace":true}',
+        encoding="utf-8",
+    )
+
+    def fake_run_chat_app(config):
+        captured["config"] = config
+        return 0
+
+    monkeypatch.setattr(i18n, "_PREFS_PATH", prefs_path)
+    monkeypatch.setattr(cli, "run_chat_app", fake_run_chat_app)
+    monkeypatch.setattr(sys, "argv", ["girlfriend-generator"])
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main()
+
+    assert exit_code == 0
+    assert captured["config"].provider_name == "ollama"
+    assert captured["config"].provider_model == "gemma4:26b"
+    assert captured["config"].ollama_base_url == "http://127.0.0.1:11434/v1"
+    assert captured["config"].performance_mode == "balanced"
+    assert captured["config"].show_trace is False
 
 
 def test_list_personas_prints_bundled_personas_without_launching_app(
@@ -220,6 +281,103 @@ def test_build_main_menu_actions_hides_setup_guide_when_provider_is_configured(m
 
     assert all(action != "setup_guide" for action, _item in actions)
     assert any(action == "usage_guide" for action, _item in actions)
+
+
+def test_provider_needs_setup_is_false_for_ollama(monkeypatch) -> None:
+    args = cli.build_parser().parse_args(["--provider", "ollama"])
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    assert cli._provider_needs_setup(args) is False
+
+
+def test_has_any_flags_ignores_provider_settings() -> None:
+    args = cli.build_parser().parse_args(["--provider", "ollama", "--model", "gemma4:26b"])
+
+    assert cli._has_any_flags(args) is False
+
+
+def test_apply_provider_defaults_uses_saved_ollama_settings(monkeypatch) -> None:
+    args = cli.build_parser().parse_args(["--provider", "ollama"])
+    monkeypatch.setenv(cli.OLLAMA_BASE_URL_ENV, "http://127.0.0.1:22434/v1")
+    monkeypatch.setenv(cli.OLLAMA_MODEL_ENV, "qwen2.5:7b")
+
+    cli._apply_provider_defaults(args)
+
+    assert args.ollama_base_url == "http://127.0.0.1:22434/v1"
+    assert args.model == "qwen2.5:7b"
+
+
+def test_persist_runtime_settings_writes_provider_preferences(monkeypatch, tmp_path: Path) -> None:
+    prefs_path = tmp_path / "prefs.json"
+    monkeypatch.setattr(i18n, "_PREFS_PATH", prefs_path)
+    args = cli.build_parser().parse_args([])
+    args.provider = "ollama"
+    args.model = "gemma4:26b"
+    args.ollama_base_url = "http://127.0.0.1:11434/v1"
+    args.performance = "balanced"
+    args.voice_output = True
+    args.no_trace = True
+
+    cli._persist_runtime_settings(args)
+
+    data = prefs_path.read_text(encoding="utf-8")
+    assert '"provider": "ollama"' in data
+    assert '"provider_model": "gemma4:26b"' in data
+    assert '"ollama_base_url": "http://127.0.0.1:11434/v1"' in data
+
+
+def test_apply_saved_runtime_settings_restores_provider_preferences(monkeypatch, tmp_path: Path) -> None:
+    prefs_path = tmp_path / "prefs.json"
+    prefs_path.write_text(
+        '{"provider":"ollama","provider_model":"gemma4:26b","ollama_base_url":"http://127.0.0.1:11434/v1","performance":"balanced","voice_output":true,"no_trace":true}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(i18n, "_PREFS_PATH", prefs_path)
+    parser = cli.build_parser()
+    args = parser.parse_args([])
+
+    cli._apply_saved_runtime_settings(args, parser, [])
+
+    assert args.provider == "ollama"
+    assert args.model == "gemma4:26b"
+    assert args.ollama_base_url == "http://127.0.0.1:11434/v1"
+    assert args.performance == "balanced"
+    assert args.voice_output is True
+    assert args.no_trace is True
+
+
+def test_apply_saved_runtime_settings_does_not_override_explicit_provider(monkeypatch, tmp_path: Path) -> None:
+    prefs_path = tmp_path / "prefs.json"
+    prefs_path.write_text('{"provider":"ollama"}', encoding="utf-8")
+    monkeypatch.setattr(i18n, "_PREFS_PATH", prefs_path)
+    parser = cli.build_parser()
+    args = parser.parse_args(["--provider", "openai"])
+
+    cli._apply_saved_runtime_settings(args, parser, ["--provider", "openai"])
+
+    assert args.provider == "openai"
+
+
+def test_build_persona_generator_config_falls_back_to_openai_for_ollama(monkeypatch) -> None:
+    args = cli.build_parser().parse_args(["--provider", "ollama"])
+    monkeypatch.setenv(cli.OLLAMA_BASE_URL_ENV, "http://127.0.0.1:11434/v1")
+    monkeypatch.setenv(cli.OLLAMA_MODEL_ENV, "gemma4:26b")
+
+    config = cli._build_persona_generator_config(args)
+
+    assert config.provider == "openai"
+    assert config.model is None
+    assert config.ollama_base_url is None
+
+
+def test_build_persona_generator_config_keeps_anthropic_when_selected() -> None:
+    args = cli.build_parser().parse_args(["--provider", "anthropic", "--model", "claude-test"])
+
+    config = cli._build_persona_generator_config(args)
+
+    assert config.provider == "anthropic"
+    assert config.model == "claude-test"
 
 
 def test_default_language_is_english(monkeypatch, tmp_path: Path) -> None:

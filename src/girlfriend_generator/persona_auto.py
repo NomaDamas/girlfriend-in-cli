@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -64,6 +65,13 @@ Rules:
 """
 
 
+@dataclass(slots=True)
+class PersonaGeneratorConfig:
+    provider: str = "openai"
+    model: str | None = None
+    ollama_base_url: str | None = None
+
+
 def _looks_like_url(text: str) -> bool:
     return text.startswith("http://") or text.startswith("https://") or "://" in text
 
@@ -99,17 +107,79 @@ def _fetch_url_content(url: str) -> str:
         return ""
 
 
-def _web_search_context(query: str) -> str:
-    """Use OpenAI web_search tool to gather context about the query."""
-    try:
-        from openai import OpenAI
-    except ImportError:
+def _resolve_persona_model(config: PersonaGeneratorConfig) -> str:
+    defaults = {
+        "openai": "gpt-4.1-mini",
+        "anthropic": "claude-3-7-sonnet-latest",
+    }
+    return config.model or defaults.get(config.provider, defaults["openai"])
+
+
+def _build_generator_client(config: PersonaGeneratorConfig) -> tuple[str, Any]:
+    if config.provider == "anthropic":
+        if not os.getenv("ANTHROPIC_API_KEY"):
+            raise RuntimeError("ANTHROPIC_API_KEY is not set. Set it in Settings > API Keys.")
+        try:
+            import anthropic
+        except ImportError as exc:
+            raise RuntimeError("Install anthropic package.") from exc
+        return "anthropic", anthropic.Anthropic()
+
+    if config.provider == "openai":
+        if not os.getenv("OPENAI_API_KEY"):
+            raise RuntimeError("OPENAI_API_KEY is not set. Set it in Settings > API Keys.")
+        from .providers import _build_openai_client
+        return "openai", _build_openai_client()
+
+    raise RuntimeError(f"Unsupported persona generation provider: {config.provider}")
+
+
+def _create_text_response(
+    client: Any,
+    client_kind: str,
+    *,
+    model: str,
+    prompt: str,
+    temperature: float | None = None,
+    tools: list[dict[str, Any]] | None = None,
+) -> str:
+    if client_kind == "anthropic":
+        response = client.messages.create(
+            model=model,
+            max_tokens=2400,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        return "".join(
+            block.text for block in response.content if getattr(block, "type", "") == "text"
+        ).strip()
+
+    request: dict[str, Any] = {
+        "model": model,
+        "input": prompt,
+    }
+    if temperature is not None:
+        request["temperature"] = temperature
+    if tools:
+        request["tools"] = tools
+
+    response = client.responses.create(**request)
+    return response.output_text.strip()
+
+
+def _web_search_context(
+    query: str,
+    client: Any,
+    *,
+    client_kind: str,
+    model: str,
+) -> str:
+    """Use OpenAI web_search tool to gather context about the query when available."""
+    if client_kind != "openai":
         return ""
 
     try:
-        client = OpenAI()
         response = client.responses.create(
-            model="gpt-4.1-mini",
+            model=model,
             tools=[{"type": "web_search"}],
             input=f"Search for information about: {query}\n\n"
             f"Summarize their personality, background, interests, style, "
@@ -121,26 +191,36 @@ def _web_search_context(query: str) -> str:
         return ""
 
 
-def generate_persona_from_input(input_text: str, model: str = "gpt-4.1-mini") -> dict[str, Any]:
+def generate_persona_from_input(
+    input_text: str,
+    model: str = "gpt-4.1-mini",
+    config: PersonaGeneratorConfig | None = None,
+) -> dict[str, Any]:
     """Call LLM to generate persona JSON from a name, URL, or description.
     If input is a URL, fetch page content. Otherwise, use web_search tool."""
-    if not os.getenv("OPENAI_API_KEY"):
-        raise RuntimeError("OPENAI_API_KEY is not set. Set it in Settings > API Keys.")
-
-    try:
-        from openai import OpenAI
-    except ImportError as exc:
-        raise RuntimeError("Install openai package.") from exc
+    resolved_config = config or PersonaGeneratorConfig(model=model)
+    resolved_model = _resolve_persona_model(resolved_config)
+    client_kind, client = _build_generator_client(resolved_config)
 
     # Gather research context
     research_context = ""
     if _looks_like_url(input_text):
         research_context = _fetch_url_content(input_text)
         if not research_context:
-            research_context = _web_search_context(input_text)
+            research_context = _web_search_context(
+                input_text,
+                client,
+                client_kind=client_kind,
+                model=resolved_model,
+            )
     else:
         # Name or description — use web search
-        research_context = _web_search_context(input_text)
+        research_context = _web_search_context(
+            input_text,
+            client,
+            client_kind=client_kind,
+            model=resolved_model,
+        )
 
     full_input = input_text
     if research_context:
@@ -150,20 +230,14 @@ def generate_persona_from_input(input_text: str, model: str = "gpt-4.1-mini") ->
             f"{research_context}"
         )
 
-    client = OpenAI()
     prompt = _AUTO_PERSONA_PROMPT.format(input_text=full_input)
-
-    response = client.responses.create(
-        model=model,
+    raw = _create_text_response(
+        client,
+        client_kind,
+        model=resolved_model,
+        prompt=prompt,
         temperature=0.9,
-        input=[
-            {
-                "role": "user",
-                "content": [{"type": "input_text", "text": prompt}],
-            }
-        ],
     )
-    raw = response.output_text.strip()
 
     # Strip markdown if present
     if raw.startswith("```"):
@@ -192,6 +266,7 @@ def deep_research_persona(
     input_text: str,
     on_progress: Any = None,
     model: str = "gpt-4.1-mini",
+    config: PersonaGeneratorConfig | None = None,
 ) -> dict[str, Any]:
     """Multi-step deep research persona generation with progress callbacks.
 
@@ -202,13 +277,8 @@ def deep_research_persona(
     4. Synthesize into detailed persona JSON
     5. Review and enrich
     """
-    if not os.getenv("OPENAI_API_KEY"):
-        raise RuntimeError("OPENAI_API_KEY is not set. Set it in Settings > API Keys.")
-
-    try:
-        from openai import OpenAI
-    except ImportError as exc:
-        raise RuntimeError("Install openai package.") from exc
+    resolved_config = config or PersonaGeneratorConfig(model=model)
+    resolved_model = _resolve_persona_model(resolved_config)
 
     def _notify(step: int) -> None:
         if callable(on_progress):
@@ -217,13 +287,15 @@ def deep_research_persona(
             except Exception:
                 pass
 
-    client = OpenAI()
+    client_kind, client = _build_generator_client(resolved_config)
 
     # Step 1: Analyze
     _notify(0)
-    analyze_resp = client.responses.create(
-        model=model,
-        input=(
+    analyze_raw = _create_text_response(
+        client,
+        client_kind,
+        model=resolved_model,
+        prompt=(
             f"Input for persona creation:\n{input_text}\n\n"
             "Extract up to 3 key web search queries that would help research this persona. "
             "Return as JSON: {\"queries\": [\"q1\", \"q2\", \"q3\"], \"is_url\": true/false}. "
@@ -234,7 +306,7 @@ def deep_research_persona(
         ),
     )
     try:
-        raw = analyze_resp.output_text.strip()
+        raw = analyze_raw.strip()
         if raw.startswith("```"):
             raw = raw.split("\n", 1)[1].rsplit("```", 1)[0]
         plan = json.loads(raw)
@@ -253,21 +325,28 @@ def deep_research_persona(
             research_chunks.append(html)
 
     _notify(2)
-    for q in queries[:3]:
-        try:
-            search_resp = client.responses.create(
-                model=model,
-                tools=[{"type": "web_search"}],
-                input=(
-                    f"Search the web for: {q}\n\n"
-                    f"Summarize concrete facts, personality traits, style quotes, "
-                    f"characteristic behavior, and anything useful for building "
-                    f"a texting-persona simulation. Max 400 words."
-                ),
-            )
-            research_chunks.append(search_resp.output_text.strip())
-        except Exception:
-            continue
+    if client_kind == "openai":
+        for q in queries[:3]:
+            try:
+                search_text = _create_text_response(
+                    client,
+                    client_kind,
+                    model=resolved_model,
+                    tools=[{"type": "web_search"}],
+                    prompt=(
+                        f"Search the web for: {q}\n\n"
+                        f"Summarize concrete facts, personality traits, style quotes, "
+                        f"characteristic behavior, and anything useful for building "
+                        f"a texting-persona simulation. Max 400 words."
+                    ),
+                )
+                research_chunks.append(search_text)
+            except Exception:
+                continue
+    elif client_kind == "anthropic":
+        research_chunks.append(
+            "Web search is unavailable for this provider; rely on the user input and fetched URL text only."
+        )
 
     combined_research = "\n\n---\n\n".join(research_chunks)[:8000]
 
@@ -280,14 +359,13 @@ def deep_research_persona(
     )
     prompt = _AUTO_PERSONA_PROMPT.format(input_text=full_input)
 
-    generate_resp = client.responses.create(
-        model=model,
+    raw = _create_text_response(
+        client,
+        client_kind,
+        model=resolved_model,
+        prompt=prompt,
         temperature=0.9,
-        input=[
-            {"role": "user", "content": [{"type": "input_text", "text": prompt}]}
-        ],
     )
-    raw = generate_resp.output_text.strip()
     if raw.startswith("```"):
         raw = raw.split("\n", 1)[1] if "\n" in raw else raw
         raw = raw.rsplit("```", 1)[0]

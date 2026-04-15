@@ -12,17 +12,12 @@ echo ""
 echo "  Installing Girlfriend Generator..."
 echo ""
 
-# Create venv if it doesn't exist
-if [ ! -d ".venv" ]; then
-    python3 -m venv .venv
-fi
-
-source .venv/bin/activate
-pip install -e ".[dev]" --quiet 2>/dev/null
+# Create/update project environment with uv
+uv sync --extra dev >/dev/null
 
 # Get the path to the installed binary
-MYGF_PATH="$(which mygf 2>/dev/null || echo "")"
-if [ -z "$MYGF_PATH" ]; then
+MYGF_PATH="$ROOT_DIR/.venv/bin/mygf"
+if [ ! -x "$MYGF_PATH" ]; then
     echo "  [ERROR] Installation failed."
     exit 1
 fi
@@ -34,8 +29,7 @@ mkdir -p "$INSTALL_DIR"
 cat > "$INSTALL_DIR/mygf" << WRAPPER
 #!/usr/bin/env bash
 export GIRLFRIEND_GENERATOR_ROOT="$ROOT_DIR"
-source "$ROOT_DIR/.venv/bin/activate"
-exec python -m girlfriend_generator "\$@"
+exec "$ROOT_DIR/.venv/bin/python" -m girlfriend_generator "\$@"
 WRAPPER
 chmod +x "$INSTALL_DIR/mygf"
 

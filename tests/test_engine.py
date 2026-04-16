@@ -20,7 +20,7 @@ def test_user_reply_clears_pending_nudge() -> None:
     session.bootstrap(now=start)
 
     assert session.awaiting_user_reply is True
-    assert session.seconds_until_nudge(start) == persona.nudge_policy.idle_after_seconds
+    assert session.seconds_until_nudge(start) == session._idle_after_seconds()
 
     session.add_user_message("방금 빌드 끝났어. 이제 너한테 집중 가능.")
 
@@ -34,7 +34,7 @@ def test_nudge_due_and_consumed_once() -> None:
     session = ConversationSession(persona=persona)
     start = utc_now()
     session.bootstrap(now=start)
-    due_time = start + timedelta(seconds=persona.nudge_policy.idle_after_seconds)
+    due_time = start + timedelta(seconds=session._idle_after_seconds())
     starting_affection = session.affection_score
 
     assert session.nudge_due(due_time) is True
@@ -55,7 +55,7 @@ def test_tick_emits_idle_nudge_when_reply_is_overdue() -> None:
     session.bootstrap(now=start)
 
     result = session.fast_forward(
-        seconds=persona.nudge_policy.idle_after_seconds + 5,
+        seconds=session._idle_after_seconds() + 5,
         provider=provider,
     )
 
@@ -111,3 +111,61 @@ def test_bootstrap_greeting_uses_configured_language(monkeypatch) -> None:
 
     assert session.messages[0].role == "assistant"
     assert "wanted to text you first" in session.messages[0].text
+
+
+def test_affection_delta_dampens_generic_repeated_flattery() -> None:
+    persona = load_persona(Path("personas/wonyoung-idol.json"))
+    session = ConversationSession(persona=persona)
+
+    first = session.apply_affection_delta(10, "좋아", source="reply")
+    second = session.apply_affection_delta(10, "좋아", source="reply")
+
+    assert first <= 6
+    assert second <= 7
+    assert session.affection_score <= 63
+
+
+def test_affection_delta_rewards_specific_consistent_interest_more_than_generic() -> None:
+    persona = load_persona(Path("personas/wonyoung-idol.json"))
+    generic_session = ConversationSession(persona=persona)
+    specific_session = ConversationSession(persona=persona)
+
+    generic_gain = generic_session.apply_affection_delta(10, "좋아", source="reply")
+    first_specific = specific_session.apply_affection_delta(
+        10,
+        "어제 힘들다고 했잖아 그래서 네가 좋아하는 커피 챙겨주고 싶었어",
+        source="reply",
+    )
+    second_specific = specific_session.apply_affection_delta(
+        10,
+        "아까 말한 발표 끝나면 같이 맛있는 거 먹자 내가 기억하고 있을게",
+        source="reply",
+    )
+
+    assert first_specific > generic_gain
+    assert second_specific >= first_specific
+    assert specific_session.affection_score > generic_session.affection_score
+
+
+def test_affection_delta_repeated_harsh_replies_drop_harder_each_time() -> None:
+    persona = load_persona(Path("personas/wonyoung-idol.json"))
+    session = ConversationSession(persona=persona)
+
+    first = session.apply_affection_delta(-8, "닥쳐", source="reply")
+    second = session.apply_affection_delta(-8, "꺼져", source="reply")
+
+    assert first <= -12
+    assert second < first
+    assert session.affection_score <= 20
+
+
+def test_endless_mode_clamps_affection_inside_playable_range() -> None:
+    persona = load_persona(Path("personas/wonyoung-idol.json"))
+    session = ConversationSession(persona=persona)
+    session.continue_after_ending("success")
+
+    assert session.endless_mode is True
+    session.apply_affection_delta(40, "진짜 사랑해", source="reply")
+    assert session.affection_score <= 99
+    session.apply_affection_delta(-80, "닥쳐 꺼져", source="reply")
+    assert session.affection_score >= 1

@@ -39,6 +39,7 @@ class HeuristicProvider:
         **kwargs: Any,
     ) -> ProviderReply:
         language = _resolve_language(kwargs.get("language"))
+        relationship_label = str(kwargs.get("relationship_label") or persona.relationship_mode)
         if language != "ko":
             text = self._generate_non_korean_reply(persona, affection_score, mood, language)
             return ProviderReply(
@@ -49,7 +50,7 @@ class HeuristicProvider:
         lower = user_text.lower()
         # Pick 1-2 parts for a natural, short reply
         parts: list[str] = []
-        reaction = self._pick_reaction(persona, lower, affection_score)
+        reaction = self._pick_reaction(persona, lower, affection_score, relationship_label)
         parts.append(reaction)
         # Sometimes add a follow-up (50% chance)
         if self.rng.random() < 0.5:
@@ -92,6 +93,9 @@ class HeuristicProvider:
         language = _resolve_language(kwargs.get("language"))
         if language != "ko":
             return _localized_nudge(persona.name, language)
+        examples = kwargs.get("nudge_examples")
+        if examples:
+            return self.rng.choice(list(examples))
         return self.rng.choice(persona.nudge_policy.templates)
 
     def _generate_non_korean_reply(
@@ -139,8 +143,13 @@ class HeuristicProvider:
             max(persona.typing.min_seconds * 1.5, len(text) / 10.0),
         )
 
-    def _pick_reaction(self, persona: Persona, user_text: str, affection: int) -> str:
+    def _pick_reaction(self, persona: Persona, user_text: str, affection: int, relationship_label: str) -> str:
         """Pick a natural reaction to the user's message."""
+        relation = relationship_label.lower()
+        is_close = any(
+            token in relation
+            for token in ("girlfriend", "boyfriend", "dating", "married", "wife", "husband", "spouse", "fiance")
+        )
         # Context-specific reactions
         if "밥" in user_text or "먹" in user_text:
             return self.rng.choice([
@@ -150,7 +159,7 @@ class HeuristicProvider:
                 "아 나도 배고팠어!",
             ])
         if "보고싶" in user_text or "보고 싶" in user_text:
-            if persona.relationship_mode == "girlfriend":
+            if is_close:
                 return self.rng.choice([
                     "나도 보고싶었어 ㅠㅠ",
                     "헐 나도... 언제 볼 수 있어?",
@@ -198,7 +207,7 @@ class HeuristicProvider:
                 "ㅎㅎ",
             ])
         # Generic reactions by relationship mode
-        if persona.relationship_mode == "girlfriend":
+        if is_close:
             return self.rng.choice([
                 "응응, 그래서?",
                 "아 진짜? ㅋㅋ",
@@ -304,6 +313,14 @@ class OpenAIProvider:
                                 difficulty=kwargs.get("difficulty", persona.difficulty),
                                 language=_resolve_language(kwargs.get("language")),
                                 special_mode=kwargs.get("special_mode", persona.special_mode),
+                                relationship_label=str(kwargs.get("relationship_label", "")),
+                                relationship_summary=str(kwargs.get("relationship_summary", "")),
+                                relationship_guidance=str(kwargs.get("relationship_guidance", "")),
+                                relationship_phase=str(kwargs.get("relationship_phase", "")),
+                                dynamic_personality=str(kwargs.get("dynamic_personality", "")),
+                                core_personality=str(kwargs.get("core_personality", "")),
+                                current_situation=str(kwargs.get("current_situation", "")),
+                                nudge_examples=list(kwargs.get("nudge_examples", []) or []),
                             ),
                         }
                     ],
@@ -446,6 +463,14 @@ class AnthropicProvider:
                 difficulty=kwargs.get("difficulty", persona.difficulty),
                 language=_resolve_language(kwargs.get("language")),
                 special_mode=kwargs.get("special_mode", persona.special_mode),
+                relationship_label=str(kwargs.get("relationship_label", "")),
+                relationship_summary=str(kwargs.get("relationship_summary", "")),
+                relationship_guidance=str(kwargs.get("relationship_guidance", "")),
+                relationship_phase=str(kwargs.get("relationship_phase", "")),
+                dynamic_personality=str(kwargs.get("dynamic_personality", "")),
+                core_personality=str(kwargs.get("core_personality", "")),
+                current_situation=str(kwargs.get("current_situation", "")),
+                nudge_examples=list(kwargs.get("nudge_examples", []) or []),
             ),
             messages=[
                 {
@@ -598,6 +623,14 @@ def _build_system_prompt(
     difficulty: str = "normal",
     language: str = "ko",
     special_mode: str = "",
+    relationship_label: str = "",
+    relationship_summary: str = "",
+    relationship_guidance: str = "",
+    relationship_phase: str = "",
+    dynamic_personality: str = "",
+    core_personality: str = "",
+    current_situation: str = "",
+    nudge_examples: list[str] | None = None,
 ) -> str:
     time_ctx = ""
     if current_time:
@@ -608,14 +641,33 @@ def _build_system_prompt(
     scene_ctx = ""
     if scene_name:
         scene_ctx = f"Current location/situation: {scene_name} — {scene_desc}. "
+    elif current_situation:
+        scene_ctx = f"Current location/situation: {current_situation}. "
 
     memory_ctx = ""
     if memory:
         memory_ctx = f"What you remember about this person from previous conversations: {memory}. "
 
+    relationship_ctx = ""
+    if relationship_label or relationship_summary or relationship_guidance or dynamic_personality:
+        relationship_ctx = (
+            f"Current relationship stage: {relationship_label or persona.relationship_mode}. "
+            f"Relationship summary: {relationship_summary or persona.situation}. "
+            f"Current stance toward the user: {relationship_guidance or 'React in-character to the current relationship stage.'} "
+            f"Mutable/dynamic personality for this stage: {dynamic_personality or persona.dynamic_personality_seed or persona.situation}. "
+        )
+
+    core_ctx = ""
+    if core_personality or persona.core_personality:
+        core_ctx = f"Core personality that must NEVER disappear: {core_personality or persona.core_personality}. "
+
+    nudge_ctx = ""
+    if nudge_examples:
+        nudge_ctx = f"Silence nudge examples for this stage: {' | '.join(nudge_examples[:3])}. "
+
     return (
         f"너는 {persona.name}이야. 20대 한국인이고, 지금 카카오톡으로 상대와 채팅 중.\n"
-        f"{time_ctx}{scene_ctx}{memory_ctx}\n"
+        f"{time_ctx}{scene_ctx}{memory_ctx}{relationship_ctx}{core_ctx}{nudge_ctx}\n"
         "=== 절대 규칙: 너는 진짜 사람이야 ===\n"
         "너는 AI, 챗봇, 모델이 아니야. 너는 오늘 퇴근하고, 배고프고, 피곤하고, "
         "친구랑 싸우기도 하고, 오늘 본 드라마에 빠져있고, 네일 새로 했고, "
@@ -657,6 +709,7 @@ def _build_system_prompt(
         '  "affection_delta": INTEGER — how their message made you feel. BE DRAMATIC:\n'
         "       +8 to +15: deeply touched (진심어린 고백, 세심한 배려, 특별한 순간)\n"
         "       +3 to +7: warm (장난+애정, 관심 표현, 재미있는 대화)\n"
+        "       +0 to +2: generic sweetness ONLY (반복적인 예쁘다/좋아해/보고싶어, 내용 없는 플러팅)\n"
         "       -1 to -3: mildly annoying (boring 단답, 무심함)\n"
         "       -5 to -10: hurtful (무례함, 무시, 성의 없음, 비꼬기)\n"
         "       -20 to -40: UNACCEPTABLE — must crash hard:\n"
@@ -669,6 +722,9 @@ def _build_system_prompt(
         "       These MUST be -20 or lower. Do NOT soften. Real humans don't 'politely correct' "
         "       these — they get HURT and ANGRY. The persona should also react FURIOUSLY or CRY.\n"
         "       Repeated unacceptable behavior should drive affection to 0 within 2-3 messages.\n"
+        "       Repeated low-effort compliments should plateau fast. Specificity matters more than sweetness.\n"
+        "       If they remember details, callback something you said earlier, or show consistent care across turns,\n"
+        "       that is when affection should jump harder.\n"
         '  "mood": "one of: neutral/happy/playful/sulky/excited/worried/flirty",\n'
         '  "memory_update": "any new important fact you learned about them (or empty string)",\n'
         '  "internal_thought": "your private feeling right now (Korean, 1 sentence)",\n'
@@ -694,13 +750,14 @@ def _build_system_prompt(
         '  "propose_scene": string OR null — if you naturally want to suggest changing location/'
         "situation (like '우리 카페 갈래?' or '한강 산책할래?'), put the proposed place. null otherwise.\n"
         "}\n\n"
-        f"Your identity: {persona.name}, {persona.age}세, {persona.relationship_mode}.\n"
+        f"Your identity: {persona.name}, {persona.age}세, {relationship_label or persona.relationship_mode}.\n"
         f"Background: {persona.background}\n"
         f"Texting style: {persona.texting_style}\n"
         f"Emoji level: {persona.style_profile.emoji_level}\n"
         f"Interests: {', '.join(persona.interests)}\n"
         f"Melts your heart: {', '.join(persona.soft_spots)}\n"
         f"Turns you off: {', '.join(persona.boundaries)}\n"
+        f"Relationship phase: {relationship_phase or 'initial'}\n"
         f"Current affection: {affection_score}/100. Current mood: {mood}.\n"
         f"Signature phrases: {', '.join(persona.style_profile.signature_phrases) or 'None'}.\n"
         "Use emojis naturally only if they fit the persona, mood, and emoji level. "
@@ -713,7 +770,8 @@ def _difficulty_instructions(difficulty: str) -> str:
     if difficulty == "easy":
         return (
             "You are EASY mode: warm, forgiving, easily impressed. Small gestures earn +5 to +10. "
-            "Mistakes only cost -1 to -3. You want this to work out.\n"
+            "Mistakes only cost -1 to -3. You want this to work out, but even here generic compliments "
+            "should not stack endlessly without detail.\n"
         )
     if difficulty == "hard":
         return (
@@ -732,7 +790,7 @@ def _difficulty_instructions(difficulty: str) -> str:
         )
     return (
         "You are NORMAL mode: realistic human. Fair reactions. Good messages +3 to +8, "
-        "boring ones -1 to -3, great ones +8 to +15.\n"
+        "boring ones -1 to -3, great ones +8 to +15. Repeated vague sweetness should flatten out fast.\n"
     )
 
 

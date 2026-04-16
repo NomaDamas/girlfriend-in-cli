@@ -88,6 +88,8 @@ class Persona:
     accent_color: str = "magenta"
     provider_system_hint: str = ""
     context_summary: str = ""
+    core_personality: str = ""
+    dynamic_personality_seed: str = ""
     style_profile: StyleProfile = field(default_factory=StyleProfile)
     initiative_profile: InitiativeProfile = field(default_factory=InitiativeProfile)
     evidence: list[ContextEvidence] = field(default_factory=list)
@@ -101,6 +103,19 @@ class Persona:
             raise ValueError("Personas must be explicitly adult.")
         if not self.nudge_policy.templates:
             raise ValueError("Persona must define at least one nudge template.")
+
+
+@dataclass(slots=True)
+class RelationshipState:
+    label: str
+    summary: str
+    guidance: str = ""
+    dynamic_personality: str = ""
+    phase: str = "initial"
+    situation: str = ""
+    nudge_style: str = ""
+    nudge_examples: list[str] = field(default_factory=list)
+    boundary_kind: str = "initial"
 
 
 @dataclass(slots=True)

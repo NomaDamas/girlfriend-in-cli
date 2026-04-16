@@ -152,7 +152,8 @@ def test_export_command_writes_local_transcript_files(tmp_path: Path) -> None:
     assert str(tmp_path) in session.messages[-1].text
 
 
-def test_render_screen_shows_typing_and_trace_visibility() -> None:
+def test_render_screen_shows_typing_and_trace_visibility(monkeypatch) -> None:
+    monkeypatch.setattr("girlfriend_generator.app.get_language", lambda: "ko")
     persona = _load_test_persona()
     session = ConversationSession(persona=persona)
     session.bootstrap()
@@ -213,7 +214,8 @@ def test_render_trace_shows_idle_timers() -> None:
     assert "Perf" not in rendered
 
 
-def test_render_header_shows_current_relationship_at_top() -> None:
+def test_render_header_shows_current_relationship_at_top(monkeypatch) -> None:
+    monkeypatch.setattr("girlfriend_generator.app.get_language", lambda: "ko")
     persona = _load_test_persona()
     session = ConversationSession(persona=persona)
     session.current_relationship_label = "married cofounders"
@@ -825,6 +827,7 @@ def test_show_ending_uses_configured_language(monkeypatch) -> None:
             )
 
     monkeypatch.setattr("girlfriend_generator.i18n.get_language", lambda: "ja")
+    monkeypatch.setattr("girlfriend_generator.app.get_language", lambda: "ja")
     monkeypatch.setattr("girlfriend_generator.wide_input.wide_input", lambda _prompt="": "c")
 
     _show_ending(_DummyLive(), Console(record=True, width=120), persona, session, "game_over", _DummyProvider())
@@ -903,6 +906,7 @@ def test_show_ending_can_continue_without_report(monkeypatch) -> None:
             )
 
     monkeypatch.setattr("girlfriend_generator.i18n.get_language", lambda: "ko")
+    monkeypatch.setattr("girlfriend_generator.app.get_language", lambda: "ko")
     monkeypatch.setattr("girlfriend_generator.wide_input.wide_input", lambda _prompt="": "e")
     live = _DummyLive()
     provider = _DummyProvider()

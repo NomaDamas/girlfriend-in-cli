@@ -1030,15 +1030,18 @@ def _localize_session_display_state(provider: Any, persona: Persona, session: Co
     language = get_language()
     if language == "ko":
         return
-    session.current_relationship_summary = _maybe_translate_display_text(
-        provider, persona, session.current_relationship_summary, language
-    )
-    session.relationship_guidance = _maybe_translate_display_text(
-        provider, persona, session.relationship_guidance, language
-    )
-    session.relationship_state.situation = _maybe_translate_display_text(
-        provider, persona, session.relationship_state.situation, language
-    )
+    if hasattr(session, "current_relationship_summary"):
+        session.current_relationship_summary = _maybe_translate_display_text(
+            provider, persona, session.current_relationship_summary, language
+        )
+    if hasattr(session, "relationship_guidance"):
+        session.relationship_guidance = _maybe_translate_display_text(
+            provider, persona, session.relationship_guidance, language
+        )
+    if getattr(session, "relationship_state", None) is not None and hasattr(session.relationship_state, "situation"):
+        session.relationship_state.situation = _maybe_translate_display_text(
+            provider, persona, session.relationship_state.situation, language
+        )
 
 
 def _show_ending(

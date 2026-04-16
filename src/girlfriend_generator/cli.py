@@ -296,11 +296,28 @@ def _persist_runtime_settings(args: argparse.Namespace) -> None:
             set_pref(key, value)
 
 
+def _build_saved_runtime_args(parser: argparse.ArgumentParser) -> argparse.Namespace:
+    args = parser.parse_args([])
+    _apply_saved_runtime_settings(args, parser, [])
+    _apply_provider_defaults(args)
+    return args
+
+
 def _build_persona_generator_config(args: argparse.Namespace):
     from .persona_auto import PersonaGeneratorConfig
 
-    provider = args.provider if args.provider in {"openai", "anthropic"} else "openai"
-    model = args.model if provider == args.provider else None
+    if args.provider in {"openai", "anthropic"}:
+        provider = args.provider
+        model = args.model
+    elif os.environ.get("OPENAI_API_KEY"):
+        provider = "openai"
+        model = _get_saved_model_for_provider("openai")
+    elif os.environ.get("ANTHROPIC_API_KEY"):
+        provider = "anthropic"
+        model = _get_saved_model_for_provider("anthropic")
+    else:
+        provider = "openai"
+        model = _get_saved_model_for_provider("openai")
     return PersonaGeneratorConfig(
         provider=provider,
         model=model,
@@ -347,7 +364,8 @@ def main() -> int:
             # Re-discover personas (user may have created new ones)
             persona_dir = bundled_persona_dir()
             bundled_personas = discover_personas(persona_dir) if persona_dir.exists() else []
-            args = build_parser().parse_args()  # reset args
+            parser = build_parser()
+            args = _build_saved_runtime_args(parser)
 
     persona_override = None
     if args.provider == "remote":
@@ -1203,6 +1221,18 @@ def _auto_generate_persona(
     generator_config = _build_persona_generator_config(args)
     provider_label = generator_config.provider
     model_label = generator_config.model or "provider default"
+    if provider_label == "openai":
+        generator_note = "OpenAI keeps live web-search grounding for persona research."
+    else:
+        generator_note = (
+            "Anthropic uses model-based synthesis plus fetched URL text. "
+            "Live web-search grounding currently requires OpenAI."
+        )
+    if args.provider not in {"openai", "anthropic"}:
+        generator_note = (
+            f"Chat is currently set to {args.provider}, but persona generation is routed to "
+            f"{provider_label}. {generator_note}"
+        )
 
     console.clear()
     console.print(Panel(
@@ -1210,7 +1240,7 @@ def _auto_generate_persona(
         "[dim]Enter anything — a name, URL, or a full multi-line description.[/dim]\n"
         "[dim]Press Enter on an empty line to finish. Deep research will run automatically.[/dim]\n\n"
         f"[dim]Current generator:[/dim] [cyan]{provider_label}[/cyan] / [magenta]{model_label}[/magenta]\n\n"
-        "[dim]Persona generation currently supports OpenAI / Anthropic only.[/dim]\n\n"
+        f"[dim]{generator_note}[/dim]\n\n"
         "[dim]Examples (single-line or multi-line):[/dim]\n"
         "  [cyan]장원영[/cyan]\n"
         "  [cyan]Dua Lipa[/cyan]\n"
@@ -1250,9 +1280,10 @@ def _auto_generate_persona(
     # Deep research — multi-step with progress
     from rich.live import Live
     from rich.spinner import Spinner
+    research_step = "🌐 Web searching..." if provider_label == "openai" else "🧾 Gathering source text..."
     steps = [
         "🔍 Analyzing input...",
-        "🌐 Web searching...",
+        research_step,
         "📚 Gathering context...",
         "🧠 Synthesizing persona...",
         "✨ Finalizing details...",

@@ -140,6 +140,55 @@ def test_main_uses_saved_provider_preferences(monkeypatch, tmp_path: Path) -> No
     assert captured["config"].show_trace is False
 
 
+def test_main_restores_saved_runtime_settings_after_back_to_menu(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    prefs_path = tmp_path / "prefs.json"
+    prefs_path.write_text(
+        (
+            '{"provider":"ollama","provider_models":{"ollama":"gemma4:26b"},'
+            '"ollama_base_url":"http://127.0.0.1:11434/v1","performance":"balanced"}'
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(i18n, "_PREFS_PATH", prefs_path)
+    monkeypatch.setattr(sys, "argv", ["girlfriend-generator"])
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    monkeypatch.setattr(cli, "maybe_prompt_for_update", lambda _console: False)
+
+    persona_path = bundled_persona_dir() / "wonyoung-idol.json"
+    menu_calls = {"count": 0}
+    captured = {}
+
+    def fake_show_main_menu(_bundled_personas, args):
+        menu_calls["count"] += 1
+        if menu_calls["count"] == 1:
+            return args, persona_path, None
+        captured["provider"] = args.provider
+        captured["model"] = args.model
+        captured["ollama_base_url"] = args.ollama_base_url
+        captured["performance"] = args.performance
+        return None
+
+    def fake_run_chat_app(_config):
+        return 2
+
+    monkeypatch.setattr(cli, "_show_main_menu", fake_show_main_menu)
+    monkeypatch.setattr(cli, "run_chat_app", fake_run_chat_app)
+    monkeypatch.chdir(tmp_path)
+
+    exit_code = cli.main()
+
+    assert exit_code == 0
+    assert captured == {
+        "provider": "ollama",
+        "model": "gemma4:26b",
+        "ollama_base_url": "http://127.0.0.1:11434/v1",
+        "performance": "balanced",
+    }
+
+
 def test_list_personas_prints_bundled_personas_without_launching_app(
     monkeypatch,
     capsys,
@@ -421,10 +470,14 @@ def test_apply_saved_runtime_settings_uses_provider_specific_model_for_saved_pro
     assert args.model == "gemma4:26b"
 
 
-def test_build_persona_generator_config_falls_back_to_openai_for_ollama(monkeypatch) -> None:
+def test_build_persona_generator_config_falls_back_to_openai_for_ollama(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(i18n, "_PREFS_PATH", tmp_path / "prefs.json")
     args = cli.build_parser().parse_args(["--provider", "ollama"])
-    monkeypatch.setenv(cli.OLLAMA_BASE_URL_ENV, "http://127.0.0.1:11434/v1")
-    monkeypatch.setenv(cli.OLLAMA_MODEL_ENV, "gemma4:26b")
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
 
     config = cli._build_persona_generator_config(args)
 
@@ -440,6 +493,26 @@ def test_build_persona_generator_config_keeps_anthropic_when_selected() -> None:
 
     assert config.provider == "anthropic"
     assert config.model == "claude-test"
+
+
+def test_build_persona_generator_config_falls_back_to_anthropic_when_openai_is_unavailable(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    prefs_path = tmp_path / "prefs.json"
+    prefs_path.write_text(
+        '{"provider_models":{"anthropic":"claude-3-7-sonnet-latest"}}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(i18n, "_PREFS_PATH", prefs_path)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+    args = cli.build_parser().parse_args(["--provider", "ollama"])
+
+    config = cli._build_persona_generator_config(args)
+
+    assert config.provider == "anthropic"
+    assert config.model == "claude-3-7-sonnet-latest"
 
 
 def test_persist_runtime_settings_keeps_models_scoped_per_provider(

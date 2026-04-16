@@ -145,6 +145,12 @@ uv sync --extra dev
 uv run mygf
 ```
 
+If `uv` is not installed yet:
+
+```bash
+brew install uv
+```
+
 That gives you:
 
 - ✅ a local `.venv`
@@ -235,6 +241,12 @@ One of the real hooks is that you can build your own **persona harness**:
 - generate one from a **name**
 - generate one from a **link**
 - generate one from a short **description / vibe**
+
+Auto-generation is routed through **OpenAI / Anthropic only**:
+
+- **OpenAI** keeps live web-search grounding
+- **Anthropic** uses model synthesis plus fetched URL text
+- **Ollama** is for chat/runtime, not Persona Studio generation
 
 The idea is simple:
 

@@ -12,6 +12,13 @@ echo ""
 echo "  Installing Girlfriend Generator..."
 echo ""
 
+if ! command -v uv >/dev/null 2>&1; then
+    echo "  [ERROR] uv is required for this install path."
+    echo "  Install uv first: brew install uv"
+    echo "  Or see: https://docs.astral.sh/uv/getting-started/installation/"
+    exit 1
+fi
+
 # Create/update project environment with uv
 uv sync --extra dev >/dev/null
 

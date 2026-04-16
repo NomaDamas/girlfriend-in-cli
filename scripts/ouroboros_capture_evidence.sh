@@ -4,6 +4,12 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+if ! command -v uv >/dev/null 2>&1; then
+  echo "uv is required to capture verification evidence. Install it first: brew install uv" >&2
+  echo "Docs: https://docs.astral.sh/uv/getting-started/installation/" >&2
+  exit 1
+fi
+
 EVIDENCE_DIR="${1:-$ROOT_DIR/artifacts/ouroboros/latest}"
 rm -rf "$EVIDENCE_DIR"
 mkdir -p "$EVIDENCE_DIR"

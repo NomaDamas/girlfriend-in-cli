@@ -217,8 +217,10 @@ def run_chat_app(config: AppConfig) -> int:
         session.awaiting_user_reply = False
         session.schedule_initiative()
         session.add_system_message(f"Session resumed ({len(resumed_messages)} messages loaded)")
+        _localize_session_display_state(provider, persona, session)
     else:
         session.bootstrap()
+        _localize_session_display_state(provider, persona, session)
 
     draft = ""
     status_line = t("prompt_message_input")
@@ -868,6 +870,7 @@ def _evolve_relationship(
     except Exception:
         state = _fallback_relationship_state(session, kind)
     session.apply_relationship_state(state)
+    _localize_session_display_state(provider, persona, session)
     session.add_system_message(f"[Relationship Shift] {state.label} — {state.summary}")
     return state
 
@@ -979,6 +982,61 @@ def _friendly_activity_status(kind: str) -> str:
         "listen": "음성 입력을 듣는 중이에요.",
     }
     return mapping.get(kind, "")
+
+
+_DISPLAY_TRANSLATION_CACHE: dict[tuple[str, str], str] = {}
+
+
+def _maybe_translate_display_text(
+    provider: Any,
+    persona: Persona,
+    text: str,
+    language: str,
+) -> str:
+    if not text or language == "ko":
+        return text
+    cache_key = (language, text)
+    if cache_key in _DISPLAY_TRANSLATION_CACHE:
+        return _DISPLAY_TRANSLATION_CACHE[cache_key]
+    if provider.__class__.__name__ == "HeuristicProvider" or not hasattr(provider, "generate_reply"):
+        return text
+    try:
+        reply = provider.generate_reply(
+            persona,
+            [],
+            (
+                f"(system: Translate the following relationship/situation text into {language}. "
+                "Return only the translated text without explanation.)\n"
+                f"{text}"
+            ),
+            50,
+            "neutral",
+            language=language,
+            difficulty=persona.difficulty,
+            special_mode="",
+        )
+        translated = (reply.text or "").strip()
+        if translated:
+            _DISPLAY_TRANSLATION_CACHE[cache_key] = translated
+            return translated
+    except Exception:
+        pass
+    return text
+
+
+def _localize_session_display_state(provider: Any, persona: Persona, session: ConversationSession) -> None:
+    language = get_language()
+    if language == "ko":
+        return
+    session.current_relationship_summary = _maybe_translate_display_text(
+        provider, persona, session.current_relationship_summary, language
+    )
+    session.relationship_guidance = _maybe_translate_display_text(
+        provider, persona, session.relationship_guidance, language
+    )
+    session.relationship_state.situation = _maybe_translate_display_text(
+        provider, persona, session.relationship_state.situation, language
+    )
 
 
 def _show_ending(

@@ -219,8 +219,10 @@ def run_chat_app(config: AppConfig) -> int:
         session.awaiting_user_reply = False
         session.schedule_initiative()
         session.add_system_message(f"Session resumed ({len(resumed_messages)} messages loaded)")
+        _localize_session_display_state(provider, persona, session)
     else:
         session.bootstrap()
+        _localize_session_display_state(provider, persona, session)
 
     draft = ""
     status_line = t("prompt_message_input")
@@ -280,8 +282,8 @@ def run_chat_app(config: AppConfig) -> int:
                         session.consume_initiative(delivered_text)
                     else:
                         session.add_assistant_message(delivered_text, schedule_nudge=True)
-                    trace.status_line = pending_delivery.trace_note
-                    status_line = pending_delivery.trace_note
+                    trace.status_line = _friendly_activity_status(pending_delivery.kind)
+                    status_line = _friendly_activity_status(pending_delivery.kind)
                     if voice_output_enabled:
                         voice_output.speak(delivered_text)
                     # Handle burst follow-ups: queue them as additional deliveries
@@ -300,18 +302,18 @@ def run_chat_app(config: AppConfig) -> int:
                     else:
                         pending_delivery = None
 
-                # Check for game over / success ending
-                if not session.endless_mode and session.affection_score <= 0 and not session.ended:
+                boundary_kind = (
+                    session.consume_boundary_trigger()
+                    if hasattr(session, "consume_boundary_trigger")
+                    else (
+                        "game_over" if (not getattr(session, "endless_mode", False) and session.affection_score <= 0)
+                        else "success" if (not getattr(session, "endless_mode", False) and session.affection_score >= 100)
+                        else None
+                    )
+                )
+                if boundary_kind is not None and not session.ended:
                     session.ended = True
-                    ending_action = _show_ending(live, console, persona, session, "game_over", provider)
-                    if ending_action == "continue":
-                        status_line = t("status_continue_after_ending")
-                        trace.status_line = status_line
-                        continue
-                    return 2
-                if not session.endless_mode and session.affection_score >= 100 and not session.ended:
-                    session.ended = True
-                    ending_action = _show_ending(live, console, persona, session, "success", provider)
+                    ending_action = _show_ending(live, console, persona, session, boundary_kind, provider)
                     if ending_action == "continue":
                         status_line = t("status_continue_after_ending")
                         trace.status_line = status_line
@@ -337,7 +339,7 @@ def run_chat_app(config: AppConfig) -> int:
                                 kind="initiative",
                                 text=proactive_reply,
                                 due_at=time.monotonic() + 0.6,
-                                trace_note="proactive: LLM scheduled follow-up",
+                                trace_note="initiative",
                             )
                     except Exception:
                         pass
@@ -351,7 +353,7 @@ def run_chat_app(config: AppConfig) -> int:
                         kind="nudge",
                         text=nudge_text,
                         due_at=time.monotonic() + 1.2,
-                        trace_note="idle-nudge: persona noticed silence",
+                        trace_note="nudge",
                     )
                 elif (
                     session.initiative_due(now)
@@ -368,7 +370,7 @@ def run_chat_app(config: AppConfig) -> int:
                             **session.prompt_context(),
                         ),
                         due_at=time.monotonic() + 0.9,
-                        trace_note="idle-initiative: persona started conversation",
+                        trace_note="initiative",
                     )
 
                 trace.pending_reply_kind = _pending_activity_kind(
@@ -410,6 +412,9 @@ def run_chat_app(config: AppConfig) -> int:
                             live, console, persona, session, provider, scene_state,
                         )
                         last_render_key = None
+                    if outcome.get("coach_full"):
+                        _show_full_coach_panel(live, console, session)
+                        last_render_key = None
                     # Scene: handle pending proposal acceptance/rejection
                     if outcome.get("sent") and scene_state.pending_proposal:
                         user_text = session.messages[-1].text if session.messages else ""
@@ -430,10 +435,12 @@ def run_chat_app(config: AppConfig) -> int:
                                         persona, scene_state.current_scene or target,
                                         target, session.messages,
                                         session.affection_score, session.mood.current,
+                                        language=get_language(),
                                     )
                                     report_reply = provider.generate_reply(
                                         persona, [], report_prompt,
                                         session.affection_score, session.mood.current,
+                                        language=get_language(),
                                         **session.prompt_context(),
                                     )
                                     report = parse_report_response(
@@ -482,12 +489,14 @@ def run_chat_app(config: AppConfig) -> int:
                                     persona, scene_state.current_scene,
                                     session.affection_score, session.mood.current,
                                     session.recent_history(), avail,
+                                    language=get_language(),
                                 )
                                 try:
                                     eval_reply = provider.generate_reply(
                                         persona, session.recent_history(),
                                         eval_prompt, session.affection_score,
                                         session.mood.current,
+                                        language=get_language(),
                                         **session.prompt_context(),
                                     )
                                     result = parse_evaluator_response(eval_reply.text)
@@ -813,10 +822,12 @@ def _parse_relationship_transition(raw: str, session: ConversationSession, kind:
 
 def _relationship_transition_prompt(persona: Persona, session: ConversationSession, kind: str) -> str:
     boundary = "affection reached 100" if kind == "success" else "affection reached 0"
+    language = get_language()
     return (
         f"The relationship just hit a boundary: {boundary}. The user is STILL the same person.\n"
         f"You must redefine ONLY the relationship between {persona.name} and the user.\n"
         "Keep the persona's core personality intact, but change the mutable/dynamic stance based on this new stage.\n"
+        f"Write `relationship_summary`, `relationship_guidance`, `dynamic_personality`, `updated_situation`, and `nudge_examples` in language={language}.\n"
         f"Current relationship label: {session.current_relationship_label}\n"
         f"Current summary: {session.current_relationship_summary}\n"
         f"Current dynamic personality: {session.dynamic_personality}\n"
@@ -861,8 +872,173 @@ def _evolve_relationship(
     except Exception:
         state = _fallback_relationship_state(session, kind)
     session.apply_relationship_state(state)
+    _localize_session_display_state(provider, persona, session)
     session.add_system_message(f"[Relationship Shift] {state.label} — {state.summary}")
     return state
+
+
+def _show_scrollable_text_panel(
+    console: Console,
+    title: str,
+    border_style: str,
+    lines: list[str],
+    width: int = 80,
+) -> None:
+    total_lines = max(1, len(lines))
+    page_height = max(8, console.size.height - 12)
+    offset = 0
+
+    def _panel() -> Any:
+        end = min(total_lines, offset + page_height)
+        visible = lines[offset:end] or [""]
+        subtitle = (
+            f"[dim]↑↓ scroll  PgUp/PgDn fast  Enter/Esc close  "
+            f"{offset + 1}-{end}/{total_lines}[/dim]"
+        )
+        return Align.center(Panel(
+            Text("\n".join(visible), overflow="fold"),
+            title=title,
+            border_style=border_style,
+            width=width,
+            padding=(1, 2),
+            subtitle=subtitle,
+        ))
+
+    if not sys.stdin.isatty():
+        console.print()
+        console.print(Align.center(Panel(
+            Text("\n".join(lines), overflow="fold"),
+            title=title,
+            border_style=border_style,
+            width=width,
+            padding=(1, 2),
+        )))
+        console.print()
+        return
+
+    if total_lines <= page_height:
+        console.print()
+        console.print(_panel())
+        console.print()
+        return
+
+    with RawKeyboard() as keyboard, Live(
+        _panel(),
+        console=console,
+        refresh_per_second=20,
+    ) as live:
+        while True:
+            key = keyboard.poll(0.05)
+            if key is None:
+                continue
+            if key in {"\r", "\n", "\x1b"}:
+                break
+            if key in ("\x1b[A", "["):
+                offset = max(0, offset - 1)
+            elif key in ("\x1b[B", "]"):
+                offset = min(max(0, total_lines - page_height), offset + 1)
+            elif key == "\x1b[5~":
+                offset = max(0, offset - max(3, page_height - 3))
+            elif key == "\x1b[6~":
+                offset = min(max(0, total_lines - page_height), offset + max(3, page_height - 3))
+            else:
+                continue
+            live.update(_panel(), refresh=True)
+
+
+def _localized_relationship_label(label: str) -> str:
+    language = get_language()
+    mapping = {
+        "crush": {"ko": "썸", "en": "Crush", "ja": "片思い", "zh": "暧昧对象"},
+        "girlfriend": {"ko": "연인", "en": "Girlfriend", "ja": "恋人", "zh": "恋人"},
+        "dating": {"ko": "사귀는 사이", "en": "Dating", "ja": "交際中", "zh": "交往中"},
+        "married cofounders": {"ko": "결혼한 공동창업자", "en": "Married Cofounders", "ja": "夫婦共同創業者", "zh": "已婚共同创业者"},
+        "trusted partner": {"ko": "굳게 믿는 동반자", "en": "Trusted Partner", "ja": "信頼できる相棒", "zh": "可信赖的伴侣"},
+        "bitter exes": {"ko": "앙금 남은 전연인", "en": "Bitter Exes", "ja": "わだかまりのある元恋人", "zh": "带怨气的前任"},
+        "career rivals": {"ko": "업계 라이벌", "en": "Career Rivals", "ja": "業界ライバル", "zh": "事业对手"},
+        "sworn enemies": {"ko": "원수", "en": "Sworn Enemies", "ja": "宿敵", "zh": "死对头"},
+        "awkward ex-rivals": {"ko": "어색한 전썸 라이벌", "en": "Awkward Ex-Rivals", "ja": "気まずい元恋ライバル", "zh": "尴尬的前暧昧对手"},
+    }
+    return mapping.get(label.lower(), {}).get(language, label)
+
+
+def _localized_mood_label(mood: str) -> str:
+    language = get_language()
+    mapping = {
+        "neutral": {"ko": "무난", "en": "Neutral", "ja": "普通", "zh": "平静"},
+        "happy": {"ko": "기분 좋음", "en": "Happy", "ja": "ご機嫌", "zh": "开心"},
+        "playful": {"ko": "장난기", "en": "Playful", "ja": "いたずらっぽい", "zh": "爱闹"},
+        "sulky": {"ko": "삐짐", "en": "Sulky", "ja": "すね気味", "zh": "闹别扭"},
+        "excited": {"ko": "들뜸", "en": "Excited", "ja": "テンション高め", "zh": "兴奋"},
+        "worried": {"ko": "걱정", "en": "Worried", "ja": "心配", "zh": "担心"},
+        "flirty": {"ko": "설렘", "en": "Flirty", "ja": "ときめき", "zh": "暧昧"},
+    }
+    return mapping.get(mood, {}).get(language, mood)
+
+
+def _friendly_activity_status(kind: str) -> str:
+    mapping = {
+        "reply": "",
+        "initiative": "페르소나가 먼저 말을 꺼냈어요.",
+        "nudge": "답장을 기다리며 다시 말을 걸었어요.",
+        "listen": "음성 입력을 듣는 중이에요.",
+    }
+    return mapping.get(kind, "")
+
+
+_DISPLAY_TRANSLATION_CACHE: dict[tuple[str, str], str] = {}
+
+
+def _maybe_translate_display_text(
+    provider: Any,
+    persona: Persona,
+    text: str,
+    language: str,
+) -> str:
+    if not text or language == "ko":
+        return text
+    cache_key = (language, text)
+    if cache_key in _DISPLAY_TRANSLATION_CACHE:
+        return _DISPLAY_TRANSLATION_CACHE[cache_key]
+    if provider.__class__.__name__ == "HeuristicProvider" or not hasattr(provider, "generate_reply"):
+        return text
+    try:
+        reply = provider.generate_reply(
+            persona,
+            [],
+            (
+                f"(system: Translate the following relationship/situation text into {language}. "
+                "Return only the translated text without explanation.)\n"
+                f"{text}"
+            ),
+            50,
+            "neutral",
+            language=language,
+            difficulty=persona.difficulty,
+            special_mode="",
+        )
+        translated = (reply.text or "").strip()
+        if translated:
+            _DISPLAY_TRANSLATION_CACHE[cache_key] = translated
+            return translated
+    except Exception:
+        pass
+    return text
+
+
+def _localize_session_display_state(provider: Any, persona: Persona, session: ConversationSession) -> None:
+    language = get_language()
+    if language == "ko":
+        return
+    session.current_relationship_summary = _maybe_translate_display_text(
+        provider, persona, session.current_relationship_summary, language
+    )
+    session.relationship_guidance = _maybe_translate_display_text(
+        provider, persona, session.relationship_guidance, language
+    )
+    session.relationship_state.situation = _maybe_translate_display_text(
+        provider, persona, session.relationship_state.situation, language
+    )
 
 
 def _show_ending(
@@ -891,7 +1067,7 @@ def _show_ending(
             ("\n  ", ""),
             (boundary_title, f"bold {color}"),
             ("\n\n  Current relationship:  ", "bold"),
-            (f"{session.current_relationship_label}\n", f"bold {persona.accent_color}"),
+            (f"{_localized_relationship_label(session.current_relationship_label)}\n", f"bold {persona.accent_color}"),
             ("  ", ""),
             (f"{session.current_relationship_summary}\n", "white"),
             ("\n  ", ""),
@@ -914,8 +1090,11 @@ def _show_ending(
         return "back"
 
     if action == "continue_silent":
+        state = _evolve_relationship(provider, persona, session, "success" if kind == "success" else "failure")
         session.continue_after_ending(kind)
-        _evolve_relationship(provider, persona, session, "success" if kind == "success" else "failure")
+        session.add_system_message(
+            f"[새 관계] {_localized_relationship_label(state.label)} — {state.summary}\n[상황] {state.situation}"
+        )
         if hasattr(live, "start"):
             live.start(refresh=True)
         return "continue"
@@ -941,14 +1120,22 @@ def _show_ending(
     )
     try:
         from .i18n import get_language
-        ending_reply = provider.generate_reply(
-            persona, session.recent_history(), ending_prompt,
-            session.affection_score, session.mood.current,
-            difficulty=persona.difficulty,
-            language=get_language(),
-            special_mode=persona.special_mode,
-            **session.prompt_context(),
-        )
+        from rich.live import Live as RichLive
+        from rich.spinner import Spinner
+
+        with RichLive(
+            Spinner("dots", text="  엔딩 리포트를 정리하는 중...", style="cyan"),
+            console=console,
+            refresh_per_second=12,
+        ):
+            ending_reply = provider.generate_reply(
+                persona, session.recent_history(), ending_prompt,
+                session.affection_score, session.mood.current,
+                difficulty=persona.difficulty,
+                language=get_language(),
+                special_mode=persona.special_mode,
+                **session.prompt_context(),
+            )
         import json as _json
         raw = ending_reply.text
         if raw.startswith("```"):
@@ -974,70 +1161,53 @@ def _show_ending(
     title = data.get("report_title", "END")
     rating = data.get("rating", "?")
 
-    body = Text.assemble(
-        ("\n", ""),
-        (f"  {data.get('persona_final_words', '')}\n\n", "italic white"),
-        ("  ──────────────────────────────\n\n", "dim"),
-        (f"  {data.get('ending_narrative', '')}\n\n", "white"),
-        ("  ──────────────────────────────\n\n", "dim"),
-        ("  Highlights:\n", "bold"),
-    )
-    lines = [body]
-    for h in data.get("highlights", []):
-        lines.append(Text(f"    • {h}\n", style="cyan"))
-    if data.get("user_strength"):
-        lines.append(Text.assemble(
-            ("\n  Strength:  ", "bold green"),
-            (f"{data.get('user_strength', '')}\n", "green"),
-        ))
-    if data.get("user_weakness"):
-        lines.append(Text.assemble(
-            ("\n  Weakness:  ", "bold red"),
-            (f"{data.get('user_weakness', '')}\n", "red"),
-        ))
-    if data.get("user_charm_point"):
-        lines.append(Text.assemble(
-            ("\n  Charm Point:  ", "bold magenta"),
-            (f"{data.get('user_charm_point', '')}\n", "magenta"),
-        ))
-    if data.get("user_charm_type"):
-        lines.append(Text.assemble(
-            ("\n  Charm Type:  ", "bold bright_magenta"),
-            (f"{data.get('user_charm_type', '')}\n", "bright_magenta"),
-        ))
-    if data.get("user_charm_feedback"):
-        lines.append(Text.assemble(
-            ("\n  Charm Feedback:  ", "bold bright_cyan"),
-            (f"{data.get('user_charm_feedback', '')}\n", "cyan"),
-        ))
-    lines.append(Text.assemble(
-        ("\n  ", ""),
-        ("Review:  ", "bold"),
-        (f"{data.get('what_went_wrong', '')}\n\n", "yellow"),
-        ("  Grade:  ", "bold"),
-        (f"{rating}\n\n", f"bold {color}"),
-        ("  Final Affection:  ", "bold"),
-        (f"{100 if kind == 'success' else 0}/100\n", f"bold {color}"),
-        ("\n  Next Relationship:  ", "bold"),
-        (f"{next_state.label}\n", f"bold {persona.accent_color}"),
-        ("  ", ""),
-        (f"{next_state.summary}\n", "white"),
-    ))
-
-    panel_body = RichGroup(*lines)
     console.print()
-    console.print(Align.center(Panel(
-        panel_body,
+    report_lines = [
+        "",
+        f"  {data.get('persona_final_words', '')}",
+        "",
+        "  ──────────────────────────────",
+        "",
+        f"  {data.get('ending_narrative', '')}",
+        "",
+        "  ──────────────────────────────",
+        "",
+        "  Highlights:",
+    ]
+    for h in data.get("highlights", []):
+        report_lines.append(f"    • {h}")
+    if data.get("user_strength"):
+        report_lines.extend(["", f"  Strength: {data.get('user_strength', '')}"])
+    if data.get("user_weakness"):
+        report_lines.extend(["", f"  Weakness: {data.get('user_weakness', '')}"])
+    if data.get("user_charm_point"):
+        report_lines.extend(["", f"  Charm Point: {data.get('user_charm_point', '')}"])
+    if data.get("user_charm_type"):
+        report_lines.extend(["", f"  Charm Type: {data.get('user_charm_type', '')}"])
+    if data.get("user_charm_feedback"):
+        report_lines.extend(["", f"  Charm Feedback: {data.get('user_charm_feedback', '')}"])
+    report_lines.extend([
+        "",
+        f"  Review: {data.get('what_went_wrong', '')}",
+        "",
+        f"  Grade: {rating}",
+        "",
+        f"  Final Affection: {100 if kind == 'success' else 0}/100",
+        "",
+        f"  Next Relationship: {_localized_relationship_label(next_state.label)}",
+        f"  {next_state.summary}",
+        "",
+        f"  Situation: {next_state.situation}",
+        "",
+        f"  Stance: {next_state.guidance}",
+        "",
+    ])
+    _show_scrollable_text_panel(
+        console,
         title=f"[bold {color}]━━ {title} ━━[/bold {color}]",
         border_style=color,
-        width=80,
-        padding=(1, 2),
-    )))
-    console.print()
-    try:
-        wide_input("")
-    except (EOFError, KeyboardInterrupt):
-        pass
+        lines=report_lines,
+    )
     if hasattr(live, "start"):
         live.start(refresh=True)
     return "continue"
@@ -1121,7 +1291,7 @@ def _finish_job(
             burst_queue=reply.burst_messages if reply.should_burst else [],
             propose_scene=reply.propose_scene,
         )
-        return None, delivery, reply.trace_note
+        return None, delivery, "답장을 준비 중이에요."
 
     return None, previous_delivery, previous_status
 
@@ -1147,7 +1317,7 @@ def _handle_key(
     if is_scroll_up and not draft:
         return {
             "draft": draft,
-            "status_line": "↑ Scrolled up. ↓ to scroll down.",
+            "status_line": "이전 대화 보는 중 · 입력창이 비어 있을 때 ↑↓로 이동",
             "pending_job": pending_job,
             "show_trace": show_trace,
             "voice_output_enabled": voice_output_enabled,
@@ -1157,7 +1327,7 @@ def _handle_key(
     if is_scroll_down and not draft:
         return {
             "draft": draft,
-            "status_line": "Latest messages.",
+            "status_line": "최신 대화로 이동 · 입력창이 비어 있을 때 ↑↓로 다시 보기",
             "pending_job": pending_job,
             "show_trace": show_trace,
             "voice_output_enabled": voice_output_enabled,
@@ -1343,7 +1513,7 @@ def _handle_command(
         }
     if lowered == "/help":
         session.add_system_message(
-            "Commands: /help /back /quit /strategy /advice /trace /status /affection /export /music /voice on|off /listen"
+            "Commands: /help /back /quit /strategy /advice /coach /trace /status /affection /export /music /voice on|off /listen"
         )
         return {
             "draft": "",
@@ -1405,6 +1575,16 @@ def _handle_command(
             "show_trace": show_trace,
             "voice_output_enabled": voice_output_enabled,
             "quit": False,
+        }
+    if lowered == "/coach":
+        return {
+            "draft": "",
+            "status_line": "코치 피드백 전체보기를 열어요.",
+            "pending_job": pending_job,
+            "show_trace": show_trace,
+            "voice_output_enabled": voice_output_enabled,
+            "quit": False,
+            "coach_full": True,
         }
     if lowered == "/affection":
         report = session.affection_report()
@@ -1629,7 +1809,7 @@ def _render_header(persona: Persona, session: ConversationSession):
     hearts = "".join("❤️" if i < bar_filled // 4 else "🤍" for i in range(5))
     affection_bar = f"{hearts}  [bold]{affection}[/bold][dim]/100[/dim]"
 
-    relation = session.current_relationship_label
+    relation = _localized_relationship_label(session.current_relationship_label)
     relation_lower = relation.lower()
     if any(token in relation_lower for token in ("married", "wife", "husband", "spouse")):
         mode_icon = "💍"
@@ -1647,7 +1827,7 @@ def _render_header(persona: Persona, session: ConversationSession):
         ("  ·  ", "dim"),
         (relation, f"italic {persona.accent_color}"),
         ("  ·  ", "dim"),
-        (f"{mood_emoji} {session.mood.current}", ""),
+        (f"{mood_emoji} {_localized_mood_label(session.mood.current)}", ""),
         ("\n ", ""),
         (session.current_relationship_summary, f"bold {persona.accent_color}"),
         ("\n ", ""),
@@ -1703,7 +1883,11 @@ def _render_chat(console: Console, session: ConversationSession, assistant_typin
         blocks.append(Align.center(
             Text(f"\n  {t('start_conversation')}\n", style="dim italic")
         ))
-    scroll_hint = f"[dim] ↑{scroll_offset} older messages [/dim]" if scroll_offset > 0 else ""
+    scroll_hint = (
+        f"[grey70]↑{scroll_offset} older messages · 입력창이 비어 있을 때 ↑↓ 이동[/grey70]"
+        if scroll_offset > 0
+        else "[grey70]입력창이 비어 있을 때 ↑↓로 이전 대화 보기[/grey70]"
+    )
     return Panel(Group(*blocks), border_style="grey37", padding=(0, 0), subtitle=scroll_hint)
 
 
@@ -1776,7 +1960,7 @@ def _render_composer(draft: str, status_line: str, user_typing: bool):
         prompt = f" {draft}[blink]|[/blink]"
     else:
         prompt = " [dim italic]메시지를 입력하세요...[/dim italic]"
-    keys = "[dim]Enter[/dim] 전송  [dim]Esc[/dim] 뒤로  [dim]↑↓[/dim] 스크롤  [dim]/help[/dim]"
+    keys = "[grey70]Enter[/grey70] 전송  [grey70]Esc[/grey70] 뒤로  [grey70]입력창 비었을 때 ↑↓[/grey70] 이전 대화  [grey70]/help[/grey70]"
     status = f"[dim italic]{status_line}[/dim italic]"
     title = "[bright_blue]typing...[/bright_blue]" if user_typing else "[dim]message[/dim]"
     return Panel(
@@ -1798,7 +1982,7 @@ def _render_trace(trace: RuntimeTrace, persona: Persona, session: ConversationSe
     table.add_column(style="white")
 
     # Key stats at top
-    table.add_row("Mood", f"{mood_emoji} {session.mood.current}")
+    table.add_row("Mood", f"{mood_emoji} {_localized_mood_label(session.mood.current)}")
     table.add_row("Affection", f"{aff_bar} {aff}")
     table.add_row("", "")
 
@@ -1819,7 +2003,7 @@ def _render_trace(trace: RuntimeTrace, persona: Persona, session: ConversationSe
 
     table.add_row("", "")
     table.add_row("Voice", f"{trace.voice_output_name}/{trace.voice_input_name}")
-    table.add_row("Status", f"[dim]{trace.status_line[:20]}[/dim]")
+    table.add_row("Status", f"[dim]{trace.status_line[:28]}[/dim]")
 
     # Coach feedback panel
     from rich.console import Group as RichGroup
@@ -1844,31 +2028,31 @@ def _render_trace(trace: RuntimeTrace, persona: Persona, session: ConversationSe
         if session.last_coach_strength:
             coach_lines.append(Text.assemble(
                 ("✓ Strength  ", "bold green"),
-                (session.last_coach_strength[:80], "green"),
+                (session.last_coach_strength[:220], "green"),
             ))
         if session.last_coach_weakness:
             coach_lines.append(Text.assemble(
                 ("✗ Weakness  ", "bold red"),
-                (session.last_coach_weakness[:80], "red"),
+                (session.last_coach_weakness[:220], "red"),
             ))
         if session.last_coach_charm_point:
             coach_lines.append(Text.assemble(
                 ("♥ Charm Point  ", "bold magenta"),
-                (session.last_coach_charm_point[:80], "magenta"),
+                (session.last_coach_charm_point[:220], "magenta"),
             ))
         if session.last_coach_charm_type:
             coach_lines.append(Text.assemble(
                 ("♥ Charm Type  ", "bold bright_magenta"),
-                (session.last_coach_charm_type[:80], "bright_magenta"),
+                (session.last_coach_charm_type[:220], "bright_magenta"),
             ))
         if session.last_coach_charm_feedback:
             coach_lines.append(Text.assemble(
                 ("♥ Charm Feedback  ", "bold cyan"),
-                (session.last_coach_charm_feedback[:120], "cyan"),
+                (session.last_coach_charm_feedback[:220], "cyan"),
             ))
         coach_lines.append(Text.assemble(
             ("→ Advice  ", "bold cyan"),
-            (session.last_coach_feedback[:120], "cyan"),
+            (session.last_coach_feedback[:220], "cyan"),
         ))
         feedback_panels.append(Panel(
             RichGroup(*coach_lines),
@@ -1878,6 +2062,34 @@ def _render_trace(trace: RuntimeTrace, persona: Persona, session: ConversationSe
         ))
     body = RichGroup(*feedback_panels)
     return Panel(body, title="[dim]trace[/dim]", border_style="grey37", padding=(0, 0))
+
+
+def _show_full_coach_panel(live: Any, console: Console, session: ConversationSession) -> None:
+    live.stop()
+    console.clear()
+    lines = [
+        "",
+        f"  Strength: {session.last_coach_strength or '아직 강점 분석이 없어요.'}",
+        "",
+        f"  Weakness: {session.last_coach_weakness or '아직 약점 분석이 없어요.'}",
+        "",
+        f"  Charm Point: {session.last_coach_charm_point or '아직 매력 포인트 분석이 없어요.'}",
+        "",
+        f"  Charm Type: {session.last_coach_charm_type or 'unknown'}",
+        "",
+        f"  Charm Feedback: {session.last_coach_charm_feedback or '아직 매력 피드백이 없어요.'}",
+        "",
+        f"  Advice: {session.last_coach_feedback or '아직 조언이 없어요. 메시지를 보내보세요!'}",
+        "",
+    ]
+    _show_scrollable_text_panel(
+        console,
+        title="[bold cyan]💡 Dating Coach[/bold cyan]",
+        border_style="cyan",
+        lines=lines,
+        width=88,
+    )
+    live.start(refresh=True)
 
 
 def _build_render_key(

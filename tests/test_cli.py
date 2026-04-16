@@ -312,24 +312,58 @@ def test_build_logo_rows_keeps_title_swappable() -> None:
     assert any("v0.1.3.5" in row for row in plain_rows)
 
 
-def test_build_main_menu_actions_shows_setup_guide_when_provider_needs_setup(monkeypatch) -> None:
+def test_build_main_menu_actions_includes_guide_entry(monkeypatch) -> None:
     args = cli.build_parser().parse_args([])
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
 
     actions = cli._build_main_menu_actions(0, args, "en")
 
-    assert any(action == "setup_guide" for action, _item in actions)
-    assert any(action == "usage_guide" for action, _item in actions)
+    assert any(action == "guide" for action, _item in actions)
+    assert all(action != "setup_guide" for action, _item in actions)
+    assert all(action != "usage_guide" for action, _item in actions)
 
 
-def test_build_main_menu_actions_hides_setup_guide_when_provider_is_configured(monkeypatch) -> None:
+def test_build_main_menu_actions_keeps_guide_when_provider_is_configured(monkeypatch) -> None:
     args = cli.build_parser().parse_args([])
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
 
     actions = cli._build_main_menu_actions(0, args, "en")
 
-    assert all(action != "setup_guide" for action, _item in actions)
-    assert any(action == "usage_guide" for action, _item in actions)
+    assert any(action == "guide" for action, _item in actions)
+
+
+def test_show_guides_menu_routes_to_usage_guide(monkeypatch) -> None:
+    args = cli.build_parser().parse_args([])
+    calls = {"usage": 0, "setup": 0}
+
+    monkeypatch.setattr(
+        "girlfriend_generator.selector.arrow_select",
+        lambda *_args, **_kwargs: 0,
+    )
+    monkeypatch.setattr(cli, "_show_usage_guide", lambda *_args, **_kwargs: calls.__setitem__("usage", calls["usage"] + 1))
+    monkeypatch.setattr(cli, "_provider_setup_guide", lambda *_args, **_kwargs: calls.__setitem__("setup", calls["setup"] + 1))
+
+    from rich.console import Console
+    cli._show_guides_menu(Console(record=True, width=120), args)
+
+    assert calls == {"usage": 1, "setup": 0}
+
+
+def test_show_guides_menu_routes_to_setup_guide(monkeypatch) -> None:
+    args = cli.build_parser().parse_args([])
+    calls = {"usage": 0, "setup": 0}
+
+    monkeypatch.setattr(
+        "girlfriend_generator.selector.arrow_select",
+        lambda *_args, **_kwargs: 1,
+    )
+    monkeypatch.setattr(cli, "_show_usage_guide", lambda *_args, **_kwargs: calls.__setitem__("usage", calls["usage"] + 1))
+    monkeypatch.setattr(cli, "_provider_setup_guide", lambda *_args, **_kwargs: calls.__setitem__("setup", calls["setup"] + 1))
+
+    from rich.console import Console
+    cli._show_guides_menu(Console(record=True, width=120), args)
+
+    assert calls == {"usage": 0, "setup": 1}
 
 
 def test_provider_needs_setup_is_false_for_ollama(monkeypatch) -> None:

@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
-from .models import ChatMessage, MoodState, MoodType, Persona, TickResult
+from .models import ChatMessage, MoodState, MoodType, Persona, RelationshipState, TickResult
 from .i18n import get_language
 
 _CHARM_TYPE_EMOJI = {
@@ -55,14 +56,98 @@ class ConversationSession:
     last_coach_charm_feedback: str = ""
     last_internal_thought: str = ""
     ended: bool = False
+    endless_mode: bool = False
+    positive_affection_streak: int = 0
+    negative_affection_streak: int = 0
+    relationship_state: RelationshipState = field(init=False)
+    relationship_history: list[str] = field(default_factory=list)
     proactive_due_at: datetime | None = None  # LLM-decided proactive message time
     strategy_uses_this_scene: int = 0  # /strategy discussions used in current scene
     max_strategy_per_scene: int = 3
+
+    def __post_init__(self) -> None:
+        self.relationship_state = RelationshipState(
+            label=self.persona.relationship_mode,
+            summary=self.persona.situation,
+            guidance=f"Treat the user according to a {self.persona.relationship_mode} dynamic while preserving your core personality.",
+            dynamic_personality=self.persona.dynamic_personality_seed or self.persona.situation,
+            phase="initial",
+            situation=self.persona.situation,
+            nudge_style="default",
+            nudge_examples=list(self.persona.nudge_policy.templates),
+            boundary_kind="initial",
+        )
+        self.relationship_history.append(self.relationship_state.label)
 
     def bootstrap(self, now: datetime | None = None) -> None:
         now = now or utc_now()
         self.add_assistant_message(self._localized_greeting(), now=now, schedule_nudge=True)
         self.schedule_initiative(now)
+
+    def continue_after_ending(self, kind: str, now: datetime | None = None) -> None:
+        now = now or utc_now()
+        self.ended = False
+        self.endless_mode = True
+        self.awaiting_user_reply = False
+        self.nudge_due_at = None
+        self.nudge_count = 0
+        self.proactive_due_at = None
+        if kind == "game_over":
+            self.affection_score = self._clamp_affection_score(max(8, self.affection_score))
+            self.mood.shift("worried", intensity=0.45)
+        else:
+            self.affection_score = self._clamp_affection_score(min(92, self.affection_score))
+            self.mood.shift("happy", intensity=0.75)
+        self.schedule_initiative(now)
+
+    @property
+    def current_relationship_label(self) -> str:
+        return self.relationship_state.label
+
+    @current_relationship_label.setter
+    def current_relationship_label(self, value: str) -> None:
+        self.relationship_state.label = value
+
+    @property
+    def current_relationship_summary(self) -> str:
+        return self.relationship_state.summary
+
+    @current_relationship_summary.setter
+    def current_relationship_summary(self, value: str) -> None:
+        self.relationship_state.summary = value
+
+    @property
+    def relationship_guidance(self) -> str:
+        return self.relationship_state.guidance
+
+    @relationship_guidance.setter
+    def relationship_guidance(self, value: str) -> None:
+        self.relationship_state.guidance = value
+
+    @property
+    def dynamic_personality(self) -> str:
+        return self.relationship_state.dynamic_personality
+
+    @dynamic_personality.setter
+    def dynamic_personality(self, value: str) -> None:
+        self.relationship_state.dynamic_personality = value
+
+    def apply_relationship_state(self, state: RelationshipState) -> None:
+        self.relationship_state = state
+        self.relationship_history.append(state.label)
+
+    def prompt_context(self) -> dict[str, object]:
+        return {
+            "relationship_label": self.relationship_state.label,
+            "relationship_summary": self.relationship_state.summary,
+            "relationship_guidance": self.relationship_state.guidance,
+            "relationship_phase": self.relationship_state.phase,
+            "dynamic_personality": self.relationship_state.dynamic_personality,
+            "core_personality": self.persona.core_personality or self.persona.background,
+            "current_situation": self.relationship_state.situation or self.persona.situation,
+            "nudge_style": self.relationship_state.nudge_style,
+            "nudge_examples": list(self.current_nudge_templates()),
+        }
 
     def add_user_message(self, text: str, now: datetime | None = None) -> None:
         now = now or utc_now()
@@ -85,7 +170,7 @@ class ConversationSession:
         if schedule_nudge:
             self.awaiting_user_reply = True
             self.nudge_due_at = now + timedelta(
-                seconds=self.persona.nudge_policy.idle_after_seconds
+                seconds=self._idle_after_seconds()
             )
         self.schedule_initiative(now)
 
@@ -113,25 +198,26 @@ class ConversationSession:
         )
 
     def next_nudge_text(self) -> str:
+        templates = self.current_nudge_templates()
         template_index = min(
             self.nudge_count,
-            len(self.persona.nudge_policy.templates) - 1,
+            len(templates) - 1,
         )
-        return self.persona.nudge_policy.templates[template_index]
+        return templates[template_index]
 
     def deliver_nudge(self, text: str, now: datetime | None = None) -> str:
         now = now or utc_now()
         self.messages.append(ChatMessage(role="assistant", text=text, created_at=now))
         self.nudge_count += 1
         penalty = min(8, 2 + (self.nudge_count - 1) * 2)
-        self.affection_score = max(0, self.affection_score - penalty)
+        self.affection_score = self._clamp_affection_score(self.affection_score - penalty)
         if self.nudge_count == 1:
             self.mood.shift("worried", intensity=0.55)
         else:
             self.mood.shift("sulky", intensity=0.7)
         self.awaiting_user_reply = True
         self.nudge_due_at = now + timedelta(
-            seconds=self.persona.nudge_policy.follow_up_after_seconds
+            seconds=self._follow_up_after_seconds()
         )
         return text
 
@@ -165,26 +251,172 @@ class ConversationSession:
         self.messages.append(ChatMessage(role="assistant", text=text, created_at=now))
         self.awaiting_user_reply = True
         self.nudge_due_at = now + timedelta(
-            seconds=self.persona.nudge_policy.idle_after_seconds
+            seconds=self._idle_after_seconds()
         )
         self.initiative_count += 1
         self.schedule_initiative(now)
         return text
 
+    def current_nudge_templates(self) -> list[str]:
+        return self.relationship_state.nudge_examples or self.persona.nudge_policy.templates
+
+    def export_state(self) -> dict[str, object]:
+        return {
+            "affection_score": self.affection_score,
+            "endless_mode": self.endless_mode,
+            "relationship_state": {
+                "label": self.relationship_state.label,
+                "summary": self.relationship_state.summary,
+                "guidance": self.relationship_state.guidance,
+                "dynamic_personality": self.relationship_state.dynamic_personality,
+                "phase": self.relationship_state.phase,
+                "situation": self.relationship_state.situation,
+                "nudge_style": self.relationship_state.nudge_style,
+                "nudge_examples": list(self.relationship_state.nudge_examples),
+                "boundary_kind": self.relationship_state.boundary_kind,
+            },
+        }
+
+    def apply_affection_delta(self, raw_delta: int, user_text: str = "", source: str = "reply") -> int:
+        if raw_delta == 0:
+            self._decay_affection_streaks()
+            return 0
+
+        text = (user_text or self._latest_user_text()).strip()
+        lower = text.lower()
+        variance = self._deterministic_variance(f"{source}|{raw_delta}|{lower}")
+
+        if raw_delta > 0:
+            applied = self._apply_positive_affection_delta(raw_delta, lower, variance)
+            self.positive_affection_streak += 1
+            self.negative_affection_streak = 0
+        else:
+            applied = self._apply_negative_affection_delta(raw_delta, lower, variance)
+            self.negative_affection_streak += 1
+            self.positive_affection_streak = 0
+
+        self.affection_score = self._clamp_affection_score(self.affection_score + applied)
+        return applied
+
+    def _apply_positive_affection_delta(self, raw_delta: int, lower: str, variance: float) -> int:
+        generic_tokens = ("좋아", "보고싶", "보고 싶", "사랑", "예뻐", "귀여", "설레", "최고")
+        specificity_tokens = (
+            "어제", "아까", "말한", "기억", "약속", "퇴근", "프로젝트", "발표",
+            "커피", "밥", "주말", "피곤", "힘들", "네가", "너가",
+        )
+        generic_count = sum(token in lower for token in generic_tokens)
+        specificity_hits = sum(token in lower for token in specificity_tokens)
+        question_bonus = lower.count("?") + lower.count("？")
+
+        quality = self._positive_difficulty_scale()
+        if generic_count:
+            quality *= max(0.35, 0.82 - 0.16 * generic_count)
+        if len(lower) <= 6:
+            quality *= 0.72
+        if specificity_hits or question_bonus:
+            quality *= 1.0 + min(0.42, specificity_hits * 0.11 + question_bonus * 0.08)
+        if len(lower) >= 18:
+            quality *= 1.08
+        if self.affection_score >= 70:
+            quality *= max(0.45, 1.0 - (self.affection_score - 70) / 48.0)
+
+        streak_boost = 1.0 + min(0.95, 0.09 * ((2 ** min(self.positive_affection_streak, 4)) - 1))
+        applied = max(1, round(raw_delta * quality * streak_boost * variance))
+        return applied
+
+    def _apply_negative_affection_delta(self, raw_delta: int, lower: str, variance: float) -> int:
+        harsh_tokens = (
+            "닥쳐", "꺼져", "싫어", "좆", "씨발", "병신", "개새끼", "미친년", "미친놈",
+            "쓸모없", "혐오", "죽어", "shut up", "fuck", "bitch",
+        )
+        dismissive_tokens = ("ㅋ", "lol", "whatever", "됐어", "몰라", "귀찮", "별로")
+
+        severity = self._negative_difficulty_scale()
+        if any(token in lower for token in harsh_tokens):
+            severity *= 1.65
+        if len(lower) <= 6:
+            severity *= 1.18
+        if any(token in lower for token in dismissive_tokens):
+            severity *= 1.12
+        if self.affection_score <= 25:
+            severity *= 1.14
+
+        streak_boost = 1.0 + min(1.35, 0.18 * ((2 ** min(self.negative_affection_streak, 4)) - 1))
+        applied = max(1, round(abs(raw_delta) * severity * streak_boost * max(1.0, variance)))
+        return -applied
+
+    def _positive_difficulty_scale(self) -> float:
+        mapping = {
+            "easy": 1.18,
+            "normal": 1.0,
+            "hard": 0.82,
+            "nightmare": 0.68,
+        }
+        return mapping.get(self.persona.difficulty, 1.0)
+
+    def _negative_difficulty_scale(self) -> float:
+        mapping = {
+            "easy": 0.92,
+            "normal": 1.0,
+            "hard": 1.12,
+            "nightmare": 1.28,
+        }
+        return mapping.get(self.persona.difficulty, 1.0)
+
+    def _deterministic_variance(self, key: str) -> float:
+        digest = hashlib.sha256(
+            f"{self.persona.name}|{len(self.messages)}|{self.affection_score}|{key}".encode("utf-8")
+        ).hexdigest()
+        bucket = int(digest[:8], 16) / 0xFFFFFFFF
+        return 0.93 + bucket * 0.18
+
+    def _latest_user_text(self) -> str:
+        for message in reversed(self.messages):
+            if message.role == "user":
+                return message.text
+        return ""
+
+    def _decay_affection_streaks(self) -> None:
+        self.positive_affection_streak = max(0, self.positive_affection_streak - 1)
+        self.negative_affection_streak = max(0, self.negative_affection_streak - 1)
+
+    def _clamp_affection_score(self, score: int) -> int:
+        if self.endless_mode:
+            return max(1, min(99, score))
+        return max(0, min(100, score))
+
+    def _idle_after_seconds(self) -> int:
+        base = self.persona.nudge_policy.idle_after_seconds
+        modifier = 1.15 - self.persona.style_profile.directness * 0.25 - self.persona.initiative_profile.spontaneity * 0.15
+        relation = self.relationship_state.label.lower()
+        if any(token in relation for token in ("dating", "girlfriend", "boyfriend", "married", "wife", "husband", "spouse", "fiance")):
+            modifier *= 0.85
+        elif any(token in relation for token in ("enemy", "rival", "ex", "awkward")):
+            modifier *= 1.05
+        return max(15, int(base * modifier))
+
+    def _follow_up_after_seconds(self) -> int:
+        base = self.persona.nudge_policy.follow_up_after_seconds
+        modifier = 1.12 - self.persona.style_profile.directness * 0.22
+        relation = self.relationship_state.label.lower()
+        if any(token in relation for token in ("enemy", "rival", "ex")):
+            modifier *= 0.92
+        return max(25, int(base * modifier))
+
     def _update_affection(self, text: str, now: datetime) -> None:
         positive_tokens = ("고마워", "좋아", "보고싶", "재밌", "설레", "사랑", "예쁘", "최고", "행복", "귀여")
         negative_tokens = ("짜증", "싫어", "별로", "귀찮", "몰라", "됐어", "ㅋ")
         if any(token in text for token in positive_tokens):
-            self.affection_score = min(100, self.affection_score + 5)
+            self.affection_score = self._clamp_affection_score(self.affection_score + 5)
         if any(token in text for token in negative_tokens):
-            self.affection_score = max(0, self.affection_score - 3)
+            self.affection_score = self._clamp_affection_score(self.affection_score - 3)
         if len(text.strip()) <= 2:
-            self.affection_score = max(0, self.affection_score - 1)
+            self.affection_score = self._clamp_affection_score(self.affection_score - 1)
         if self.last_activity_at:
             gap = (now - self.last_activity_at).total_seconds()
             if gap > 300:
                 decay = min(8, int(gap / 300))
-                self.affection_score = max(0, self.affection_score - decay)
+                self.affection_score = self._clamp_affection_score(self.affection_score - decay)
 
     def _update_mood_from_text(self, text: str) -> None:
         mood = self._detect_mood(text)

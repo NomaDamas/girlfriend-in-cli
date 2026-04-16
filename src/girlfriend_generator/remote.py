@@ -75,6 +75,7 @@ class RemoteProvider:
         user_text: str,
         affection_score: int,
         mood: MoodType = "neutral",
+        **kwargs,
     ) -> ProviderReply:
         payload = _post_json(
             f"{self.base_url}/v1/chat/respond",
@@ -84,6 +85,10 @@ class RemoteProvider:
                 "user_message": user_text,
                 "affection_score": affection_score,
                 "mood": mood,
+                "relationship_label": kwargs.get("relationship_label"),
+                "relationship_summary": kwargs.get("relationship_summary"),
+                "relationship_guidance": kwargs.get("relationship_guidance"),
+                "dynamic_personality": kwargs.get("dynamic_personality"),
             },
         )
         self.last_trace = {
@@ -104,6 +109,7 @@ class RemoteProvider:
         persona: Persona,
         history: list[ChatMessage],
         affection_score: int,
+        **kwargs,
     ) -> str:
         payload = _post_json(
             f"{self.base_url}/v1/chat/initiate",
@@ -111,6 +117,8 @@ class RemoteProvider:
                 "persona_id": self.persona_id,
                 "history": [_message_to_dict(item) for item in history],
                 "affection_score": affection_score,
+                "relationship_label": kwargs.get("relationship_label"),
+                "relationship_summary": kwargs.get("relationship_summary"),
             },
         )
         self.last_trace = {

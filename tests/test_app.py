@@ -8,6 +8,7 @@ from girlfriend_generator.app import (
     _finish_job,
     _handle_command,
     _handle_key,
+    _render_header,
     _render_screen,
     _render_trace,
     _show_ending,
@@ -178,7 +179,7 @@ def test_render_screen_shows_typing_and_trace_visibility() -> None:
     rendered = _render_to_text(renderable)
 
     assert "trace" in rendered
-    assert "heuristic" in rendered
+    assert persona.relationship_mode in rendered
     assert "typing" in rendered
 
 
@@ -203,6 +204,21 @@ def test_render_trace_shows_idle_timers() -> None:
     assert "Init" in rendered
     assert "420" in rendered
     assert "external-command" in rendered
+    assert "Provider" not in rendered
+    assert "Model" not in rendered
+    assert "Perf" not in rendered
+
+
+def test_render_header_shows_current_relationship_at_top() -> None:
+    persona = _load_test_persona()
+    session = ConversationSession(persona=persona)
+    session.current_relationship_label = "married cofounders"
+    session.current_relationship_summary = "같이 브랜드를 운영하면서 이미 결혼한 상태"
+
+    rendered = _render_to_text(_render_header(persona, session))
+
+    assert "married cofounders" in rendered
+    assert "같이 브랜드를 운영하면서 이미 결혼한 상태" in rendered
 
 
 def test_render_trace_shows_coach_strength_and_weakness() -> None:
@@ -481,6 +497,7 @@ def test_run_chat_app_returns_back_signal_after_ending_screen(
             self.affection_score = 0
             self.awaiting_user_reply = False
             self.ended = False
+            self.endless_mode = False
             self.mood = type("Mood", (), {"current": "neutral"})()
             self.proactive_due_at = None
 
@@ -566,6 +583,223 @@ def test_run_chat_app_returns_back_signal_after_ending_screen(
     assert ending_calls == ["shown"]
 
 
+def test_run_chat_app_can_continue_after_ending_screen(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    persona = _load_test_persona()
+    ending_calls: list[str] = []
+
+    class FakeSession:
+        def __init__(self, persona):
+            self.persona = persona
+            self.messages = []
+            self.affection_score = 0
+            self.awaiting_user_reply = False
+            self.ended = False
+            self.endless_mode = False
+            self.mood = type("Mood", (), {"current": "neutral"})()
+            self.proactive_due_at = None
+
+        def bootstrap(self) -> None:
+            return None
+
+        def seconds_until_nudge(self, _now=None):
+            return None
+
+        def seconds_until_initiative(self, _now=None):
+            return None
+
+        def nudge_due(self, _now=None) -> bool:
+            return False
+
+        def initiative_due(self, _now=None) -> bool:
+            return False
+
+    class DummyKeyboard:
+        def __init__(self):
+            self.keys = ["\x1b"]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def poll(self, _timeout):
+            if self.keys:
+                return self.keys.pop(0)
+            return None
+
+    class DummyLive:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def update(self, *_args, **_kwargs):
+            return None
+
+        def stop(self):
+            return None
+
+    class DummyVoice:
+        name = "off"
+
+        def speak(self, _text):
+            return None
+
+    class DummyMusic:
+        def update_mood(self, _mood):
+            return None
+
+        def stop(self):
+            return None
+
+    def _fake_show_ending(_live, _console, _persona, session, _kind, _provider):
+        ending_calls.append("shown")
+        session.affection_score = 5
+        session.ended = False
+        return "continue"
+
+    monkeypatch.setattr("girlfriend_generator.app._supports_interactive_chat", lambda: True)
+    monkeypatch.setattr("girlfriend_generator.app.ConversationSession", FakeSession)
+    monkeypatch.setattr("girlfriend_generator.app.build_provider", lambda _config: object())
+    monkeypatch.setattr("girlfriend_generator.app.build_voice_output", lambda _enabled: DummyVoice())
+    monkeypatch.setattr("girlfriend_generator.app.build_voice_input", lambda _cmd: DummyVoice())
+    monkeypatch.setattr("girlfriend_generator.app.build_music_player", lambda: DummyMusic())
+    monkeypatch.setattr("girlfriend_generator.app.load_scenes", lambda: [])
+    monkeypatch.setattr("girlfriend_generator.app.RawKeyboard", DummyKeyboard)
+    monkeypatch.setattr("girlfriend_generator.app.Live", DummyLive)
+    monkeypatch.setattr("girlfriend_generator.app._render_screen", lambda **_kwargs: "screen")
+    monkeypatch.setattr("girlfriend_generator.app._show_ending", _fake_show_ending)
+
+    exit_code = run_chat_app(
+        AppConfig(
+            persona_path=tmp_path / "unused.json",
+            persona_override=persona,
+            session_dir=tmp_path,
+            export_on_exit=False,
+        )
+    )
+
+    assert exit_code == 2
+    assert ending_calls == ["shown"]
+
+
+def test_run_chat_app_endless_mode_skips_future_endings_after_continue(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    persona = _load_test_persona()
+    ending_calls: list[str] = []
+
+    class FakeSession:
+        def __init__(self, persona):
+            self.persona = persona
+            self.messages = []
+            self.affection_score = 0
+            self.awaiting_user_reply = False
+            self.ended = False
+            self.endless_mode = False
+            self.mood = type("Mood", (), {"current": "neutral"})()
+            self.proactive_due_at = None
+
+        def bootstrap(self) -> None:
+            return None
+
+        def seconds_until_nudge(self, _now=None):
+            return None
+
+        def seconds_until_initiative(self, _now=None):
+            return None
+
+        def nudge_due(self, _now=None) -> bool:
+            return False
+
+        def initiative_due(self, _now=None) -> bool:
+            return False
+
+    class DummyKeyboard:
+        def __init__(self):
+            self.keys = ["\x1b"]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def poll(self, _timeout):
+            if self.keys:
+                return self.keys.pop(0)
+            return None
+
+    class DummyLive:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def update(self, *_args, **_kwargs):
+            return None
+
+        def stop(self):
+            return None
+
+    class DummyVoice:
+        name = "off"
+
+        def speak(self, _text):
+            return None
+
+    class DummyMusic:
+        def update_mood(self, _mood):
+            return None
+
+        def stop(self):
+            return None
+
+    def _fake_show_ending(_live, _console, _persona, session, _kind, _provider):
+        ending_calls.append("shown")
+        session.endless_mode = True
+        session.affection_score = 0
+        session.ended = False
+        return "continue"
+
+    monkeypatch.setattr("girlfriend_generator.app._supports_interactive_chat", lambda: True)
+    monkeypatch.setattr("girlfriend_generator.app.ConversationSession", FakeSession)
+    monkeypatch.setattr("girlfriend_generator.app.build_provider", lambda _config: object())
+    monkeypatch.setattr("girlfriend_generator.app.build_voice_output", lambda _enabled: DummyVoice())
+    monkeypatch.setattr("girlfriend_generator.app.build_voice_input", lambda _cmd: DummyVoice())
+    monkeypatch.setattr("girlfriend_generator.app.build_music_player", lambda: DummyMusic())
+    monkeypatch.setattr("girlfriend_generator.app.load_scenes", lambda: [])
+    monkeypatch.setattr("girlfriend_generator.app.RawKeyboard", DummyKeyboard)
+    monkeypatch.setattr("girlfriend_generator.app.Live", DummyLive)
+    monkeypatch.setattr("girlfriend_generator.app._render_screen", lambda **_kwargs: "screen")
+    monkeypatch.setattr("girlfriend_generator.app._show_ending", _fake_show_ending)
+
+    exit_code = run_chat_app(
+        AppConfig(
+            persona_path=tmp_path / "unused.json",
+            persona_override=persona,
+            session_dir=tmp_path,
+            export_on_exit=False,
+        )
+    )
+
+    assert exit_code == 2
+    assert ending_calls == ["shown"]
+
+
 def test_show_ending_uses_configured_language(monkeypatch) -> None:
     persona = _load_test_persona()
     session = ConversationSession(persona=persona)
@@ -587,11 +821,94 @@ def test_show_ending_uses_configured_language(monkeypatch) -> None:
             )
 
     monkeypatch.setattr("girlfriend_generator.i18n.get_language", lambda: "ja")
-    monkeypatch.setattr("girlfriend_generator.wide_input.wide_input", lambda _prompt="": "")
+    monkeypatch.setattr("girlfriend_generator.wide_input.wide_input", lambda _prompt="": "c")
 
     _show_ending(_DummyLive(), Console(record=True, width=120), persona, session, "game_over", _DummyProvider())
 
     assert captured["kwargs"]["language"] == "ja"
+
+
+def test_show_ending_returns_continue_when_player_asks_to_keep_playing(monkeypatch) -> None:
+    persona = _load_test_persona()
+    session = ConversationSession(persona=persona)
+    session.bootstrap()
+
+    class _DummyLive:
+        def __init__(self) -> None:
+            self.started = False
+            self.stopped = False
+
+        def stop(self):
+            self.stopped = True
+            return None
+
+        def start(self, refresh=False):
+            self.started = refresh
+            return None
+
+    class _DummyProvider:
+        def generate_reply(self, *args, **kwargs):
+            return ProviderReply(
+                text='{"persona_final_words":"bye","ending_narrative":"end","report_title":"END","highlights":[],"what_went_wrong":"x","rating":"F"}',
+                typing_seconds=0.1,
+                trace_note="",
+            )
+
+    monkeypatch.setattr("girlfriend_generator.i18n.get_language", lambda: "en")
+    monkeypatch.setattr("girlfriend_generator.wide_input.wide_input", lambda _prompt="": "c")
+    live = _DummyLive()
+    console = Console(record=True, width=120)
+
+    action = _show_ending(live, console, persona, session, "game_over", _DummyProvider())
+
+    assert action == "continue"
+    assert live.stopped is True
+    assert live.started is True
+    assert session.current_relationship_label
+    assert "report" in console.export_text().lower()
+
+
+def test_show_ending_can_continue_without_report(monkeypatch) -> None:
+    persona = _load_test_persona()
+    session = ConversationSession(persona=persona)
+    session.bootstrap()
+    session.current_relationship_label = "crush"
+
+    class _DummyLive:
+        def __init__(self) -> None:
+            self.started = False
+            self.stopped = False
+
+        def stop(self):
+            self.stopped = True
+            return None
+
+        def start(self, refresh=False):
+            self.started = refresh
+            return None
+
+    class _DummyProvider:
+        calls = 0
+
+        def generate_reply(self, *args, **kwargs):
+            self.calls += 1
+            return ProviderReply(
+                text='{"relation_label":"awkward ex-rivals","relationship_summary":"한때 썸이었지만 지금은 서로 신경전을 벌이는 사이","relationship_guidance":"차갑고 날카롭지만 은근히 과거 감정이 남아 있다","dynamic_personality":"더 방어적이고 비꼬는 반응","updated_situation":"같은 업계에서 계속 마주치는 상태","nudge_examples":["읽고도 답 없네 역시 너답다","도망간다고 없는 일 안 돼"],"nudge_style":"sharp"}',
+                typing_seconds=0.1,
+                trace_note="",
+            )
+
+    monkeypatch.setattr("girlfriend_generator.i18n.get_language", lambda: "ko")
+    monkeypatch.setattr("girlfriend_generator.wide_input.wide_input", lambda _prompt="": "e")
+    live = _DummyLive()
+    provider = _DummyProvider()
+
+    action = _show_ending(live, Console(record=True, width=120), persona, session, "game_over", provider)
+
+    assert action == "continue"
+    assert provider.calls == 1
+    assert session.current_relationship_label == "awkward ex-rivals"
+    assert session.relationship_guidance.startswith("차갑고")
 
 
 def test_show_ending_renders_strength_and_weakness(monkeypatch) -> None:
@@ -612,7 +929,7 @@ def test_show_ending_renders_strength_and_weakness(monkeypatch) -> None:
             )
 
     monkeypatch.setattr("girlfriend_generator.i18n.get_language", lambda: "ko")
-    monkeypatch.setattr("girlfriend_generator.wide_input.wide_input", lambda _prompt="": "")
+    monkeypatch.setattr("girlfriend_generator.wide_input.wide_input", lambda _prompt="": "c")
     console = Console(record=True, width=120)
 
     _show_ending(_DummyLive(), console, persona, session, "success", _DummyProvider())
@@ -642,7 +959,7 @@ def test_show_ending_renders_charm_fields(monkeypatch) -> None:
             )
 
     monkeypatch.setattr("girlfriend_generator.i18n.get_language", lambda: "ko")
-    monkeypatch.setattr("girlfriend_generator.wide_input.wide_input", lambda _prompt="": "")
+    monkeypatch.setattr("girlfriend_generator.wide_input.wide_input", lambda _prompt="": "c")
     console = Console(record=True, width=120)
 
     _show_ending(_DummyLive(), console, persona, session, "success", _DummyProvider())

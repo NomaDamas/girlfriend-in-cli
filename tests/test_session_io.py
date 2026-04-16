@@ -3,7 +3,7 @@ from pathlib import Path
 
 from girlfriend_generator.engine import ConversationSession
 from girlfriend_generator.personas import load_persona
-from girlfriend_generator.session_io import export_session, slugify
+from girlfriend_generator.session_io import export_session, load_session_snapshot, slugify
 
 
 def test_export_session_writes_json_and_markdown(tmp_path: Path) -> None:
@@ -51,6 +51,27 @@ def test_export_session_uses_unique_filenames_on_repeat_export(tmp_path: Path) -
     assert second_markdown != first_markdown
     assert second_json.stem.endswith("-2")
     assert second_markdown.stem.endswith("-2")
+
+
+def test_export_session_persists_relationship_state(tmp_path: Path) -> None:
+    persona = load_persona(Path("personas/wonyoung-idol.json"))
+    session = ConversationSession(persona=persona)
+    session.bootstrap()
+    session.current_relationship_label = "married cofounders"
+    session.current_relationship_summary = "서로의 일과 삶을 같이 책임지는 상태"
+    session.relationship_state.situation = "같이 회사를 운영하며 집도 함께 쓰는 상태"
+
+    json_path, _ = export_session(
+        session_dir=tmp_path,
+        persona=persona,
+        messages=session.messages,
+        relationship_state=session.export_state().get("relationship_state"),
+    )
+
+    _messages, snapshot = load_session_snapshot(json_path)
+
+    assert snapshot["label"] == "married cofounders"
+    assert snapshot["summary"] == "서로의 일과 삶을 같이 책임지는 상태"
 
 
 def test_slugify_keeps_ascii_safe_names() -> None:

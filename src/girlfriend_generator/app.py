@@ -22,10 +22,10 @@ from rich.text import Text
 
 from .engine import ConversationSession, utc_now
 from .i18n import get_language, t
-from .models import MOOD_EMOJI, ChatMessage, Persona, ProviderReply, RuntimeTrace
+from .models import MOOD_EMOJI, ChatMessage, Persona, ProviderReply, RelationshipState, RuntimeTrace
 from .personas import load_persona
 from .providers import ProviderConfig, build_provider
-from .session_io import export_session, load_session_messages
+from .session_io import export_session, load_session_snapshot
 from .music import build_music_player
 from .scenes import (
     SceneState, Scene, load_scenes, available_scenes,
@@ -87,6 +87,39 @@ class BackgroundJob:
             return self._result_queue.get_nowait()
         except queue.Empty:
             return None
+
+
+def _resolve_ending_choice(choice: str) -> str:
+    normalized = " ".join(choice.strip().lower().split())
+    if normalized in {
+        "c",
+        "continue",
+        "continue report",
+        "report",
+        "keep playing",
+        "resume",
+        "play on",
+        "계속",
+        "계속 플레이",
+        "계속하기",
+        "続ける",
+        "继续",
+    }:
+        return "continue_report"
+    if normalized in {
+        "e",
+        "endless",
+        "no report",
+        "silent",
+        "silent continue",
+        "reportless",
+        "노리포트",
+        "리포트 없이",
+        "무한",
+        "skip report",
+    }:
+        return "continue_silent"
+    return "back"
 
 
 class RawKeyboard:
@@ -169,8 +202,18 @@ def run_chat_app(config: AppConfig) -> int:
     )
     session = ConversationSession(persona=persona)
     if config.resume_path and config.resume_path.exists():
-        resumed_messages = load_session_messages(config.resume_path)
+        resumed_messages, resumed_state = load_session_snapshot(config.resume_path)
         session.messages = resumed_messages
+        if resumed_state:
+            session.current_relationship_label = str(resumed_state.get("label", session.current_relationship_label))
+            session.current_relationship_summary = str(resumed_state.get("summary", session.current_relationship_summary))
+            session.relationship_guidance = str(resumed_state.get("guidance", session.relationship_guidance))
+            session.dynamic_personality = str(resumed_state.get("dynamic_personality", session.dynamic_personality))
+            session.relationship_state.phase = str(resumed_state.get("phase", session.relationship_state.phase))
+            session.relationship_state.situation = str(resumed_state.get("situation", session.relationship_state.situation))
+            session.relationship_state.nudge_style = str(resumed_state.get("nudge_style", session.relationship_state.nudge_style))
+            session.relationship_state.nudge_examples = [str(item) for item in resumed_state.get("nudge_examples", session.relationship_state.nudge_examples)]
+            session.relationship_state.boundary_kind = str(resumed_state.get("boundary_kind", session.relationship_state.boundary_kind))
         session.awaiting_user_reply = False
         session.schedule_initiative()
         session.add_system_message(f"Session resumed ({len(resumed_messages)} messages loaded)")
@@ -256,13 +299,21 @@ def run_chat_app(config: AppConfig) -> int:
                         pending_delivery = None
 
                 # Check for game over / success ending
-                if session.affection_score <= 0 and not session.ended:
+                if not session.endless_mode and session.affection_score <= 0 and not session.ended:
                     session.ended = True
-                    _show_ending(live, console, persona, session, "game_over", provider)
+                    ending_action = _show_ending(live, console, persona, session, "game_over", provider)
+                    if ending_action == "continue":
+                        status_line = t("status_continue_after_ending")
+                        trace.status_line = status_line
+                        continue
                     return 2
-                if session.affection_score >= 100 and not session.ended:
+                if not session.endless_mode and session.affection_score >= 100 and not session.ended:
                     session.ended = True
-                    _show_ending(live, console, persona, session, "success", provider)
+                    ending_action = _show_ending(live, console, persona, session, "success", provider)
+                    if ending_action == "continue":
+                        status_line = t("status_continue_after_ending")
+                        trace.status_line = status_line
+                        continue
                     return 2
 
                 # LLM-scheduled proactive follow-up (highest priority)
@@ -277,6 +328,7 @@ def run_chat_app(config: AppConfig) -> int:
                     try:
                         proactive_reply = provider.generate_initiative(
                             persona, session.recent_history(), session.affection_score,
+                            **session.prompt_context(),
                         )
                         if proactive_reply:
                             pending_delivery = PendingDelivery(
@@ -291,6 +343,7 @@ def run_chat_app(config: AppConfig) -> int:
                 if session.nudge_due(now) and pending_job is None and pending_delivery is None:
                     nudge_text = provider.generate_nudge(
                         persona, session.recent_history(), session.affection_score,
+                        **session.prompt_context(),
                     )
                     pending_delivery = PendingDelivery(
                         kind="nudge",
@@ -310,6 +363,7 @@ def run_chat_app(config: AppConfig) -> int:
                             persona,
                             session.recent_history(),
                             session.affection_score,
+                            **session.prompt_context(),
                         ),
                         due_at=time.monotonic() + 0.9,
                         trace_note="idle-initiative: persona started conversation",
@@ -378,6 +432,7 @@ def run_chat_app(config: AppConfig) -> int:
                                     report_reply = provider.generate_reply(
                                         persona, [], report_prompt,
                                         session.affection_score, session.mood.current,
+                                        **session.prompt_context(),
                                     )
                                     report = parse_report_response(
                                         report_reply.text,
@@ -400,7 +455,7 @@ def run_chat_app(config: AppConfig) -> int:
                                 # Transition
                                 scene_state.accept_transition(target)
                                 session.strategy_uses_this_scene = 0  # reset per scene
-                                session.affection_score = min(100, session.affection_score + 5)
+                                session.apply_affection_delta(5, user_text, source="scene_accept")
                                 session.mood.shift(target.mood_hint)
                                 # Clear messages for new scene, keep summary
                                 if report.scene_summary:
@@ -409,7 +464,7 @@ def run_chat_app(config: AppConfig) -> int:
                                     session.add_system_message(f"[현재 장소] {target.name} — {target.description}")
                         elif any(w in lower_text for w in reject_words):
                             scene_state.reject_transition()
-                            session.affection_score = max(0, session.affection_score - 2)
+                            session.apply_affection_delta(-2, user_text, source="scene_reject")
                         # else: ambiguous response, keep proposal pending
 
                     # Scene evaluator: check after every user message
@@ -431,6 +486,7 @@ def run_chat_app(config: AppConfig) -> int:
                                         persona, session.recent_history(),
                                         eval_prompt, session.affection_score,
                                         session.mood.current,
+                                        **session.prompt_context(),
                                     )
                                     result = parse_evaluator_response(eval_reply.text)
                                     if result.should_move and result.proposal_line:
@@ -501,6 +557,7 @@ def run_chat_app(config: AppConfig) -> int:
                 session_dir=config.session_dir,
                 persona=persona,
                 messages=session.messages,
+                relationship_state=session.export_state().get("relationship_state"),
             )
 
 
@@ -581,6 +638,7 @@ def _show_strategy_discussion(
             strategy_reply = provider.generate_reply(
                 persona, session.recent_history(), strategy_prompt,
                 session.affection_score, session.mood.current,
+                **session.prompt_context(),
             )
             import json as _json
             raw = strategy_reply.text
@@ -651,6 +709,160 @@ def _show_strategy_discussion(
     live.start(refresh=True)
 
 
+def _fallback_relationship_state(session: ConversationSession, kind: str) -> RelationshipState:
+    relation = session.current_relationship_label.lower()
+    if kind == "success":
+        if any(token in relation for token in ("crush", "friend", "situationship")):
+            return RelationshipState(
+                label="dating",
+                summary="서로 좋아하는 걸 확인하고 이제는 공식적으로 사귀는 관계",
+                guidance="더 가까워졌지만 너무 쉬운 사람은 아니다. 다정함과 익숙함이 함께 있다.",
+                dynamic_personality="애정 표현이 더 자연스럽고 사적인 관심이 깊어졌다",
+                phase="evolved-after-success",
+                situation="서로의 일상과 일정이 자연스럽게 얽힌 연애 초기",
+                nudge_style="soft clingy",
+                nudge_examples=["자기야 뭐 해", "오늘 내 생각 안 했지 솔직히", "답장 좀 해봐 보고싶단 말이야"],
+                boundary_kind=kind,
+            )
+        if any(token in relation for token in ("dating", "girlfriend", "boyfriend", "partner")):
+            return RelationshipState(
+                label="married cofounders",
+                summary="연인 단계를 지나 서로의 인생과 일까지 함께 책임지는 사이",
+                guidance="편하지만 더 깊은 책임감과 현실적인 대화가 섞인다.",
+                dynamic_personality="친밀함 위에 신뢰와 생활감이 더해졌다",
+                phase="evolved-after-success",
+                situation="함께 살거나 함께 큰 프로젝트를 운영하는 상태",
+                nudge_style="assertive intimate",
+                nudge_examples=["회의 끝났어? 이제 답해", "배우자 무시하면 혼난다", "바쁜 건 알겠는데 한 줄은 남겨"],
+                boundary_kind=kind,
+            )
+        return RelationshipState(
+            label="trusted partner",
+            summary="강한 신뢰와 팀워크를 기반으로 삶을 함께 꾸리는 관계",
+            guidance="감정만이 아니라 신뢰와 동맹 의식이 크게 작동한다.",
+            dynamic_personality="한층 안정적이고 단단한 애착",
+            phase="evolved-after-success",
+            situation="서로의 미래 계획을 같이 움직이는 상태",
+            nudge_style="warm reliable",
+            nudge_examples=["우리 팀원님 어디 갔어", "나 혼자 결정하게 두지 마", "한 줄 보고는 해줘"],
+            boundary_kind=kind,
+        )
+    if any(token in relation for token in ("dating", "girlfriend", "boyfriend", "partner", "married", "spouse")):
+        return RelationshipState(
+            label="bitter exes",
+            summary="감정은 남아 있지만 지금은 앙금과 서운함이 더 큰 관계",
+            guidance="차갑고 예민하지만 완전히 무심하지는 않다.",
+            dynamic_personality="상처받기 쉬워졌고 방어적이며 비꼬는 톤이 늘었다",
+            phase="evolved-after-failure",
+            situation="서로 끊지 못한 채 어색하게 다시 마주치는 상태",
+            nudge_style="cold resentful",
+            nudge_examples=["읽고도 답 없네 끝까지 그러네", "또 피하네 아주 너답다", "말 안 하면 더 짜증나"],
+            boundary_kind=kind,
+        )
+    if any(token in relation for token in ("bitter exes", "awkward", "ex")):
+        return RelationshipState(
+            label="career rivals",
+            summary="이제는 감정보다 경쟁심과 자존심이 앞서는 관계",
+            guidance="호감보다는 신경전과 승부욕이 먼저 튀어나온다.",
+            dynamic_personality="예민하고 공격적이지만 상대를 계속 의식한다",
+            phase="evolved-after-failure",
+            situation="같은 업계나 같은 판에서 자꾸 부딪히는 상태",
+            nudge_style="sharp competitive",
+            nudge_examples=["도망간다고 끝난 줄 알아?", "또 답 없네 자신 없냐", "계속 피하면 내가 더 기억한다"],
+            boundary_kind=kind,
+        )
+    return RelationshipState(
+        label="sworn enemies",
+        summary="대화는 이어지지만 서로에게 적대감과 집착이 남아 있는 관계",
+        guidance="노골적으로 날카롭고 경계심이 강하다. 호감보다는 집착과 적의가 크다.",
+        dynamic_personality="훨씬 공격적이고 감정 기복이 크며 사소한 반응에도 예민하다",
+        phase="evolved-after-failure",
+        situation="같은 사람을 두고 완전히 꼬여버린 원수 상태",
+        nudge_style="hostile obsessive",
+        nudge_examples=["끝까지 무시하네", "답 없어도 기억은 다 해", "원수 만들 재주는 진짜 있네"],
+        boundary_kind=kind,
+    )
+
+
+def _parse_relationship_transition(raw: str, session: ConversationSession, kind: str) -> RelationshipState:
+    import json as _json
+
+    clean = raw.strip()
+    if clean.startswith("```"):
+        clean = clean.split("\n", 1)[1].rsplit("```", 1)[0]
+    try:
+        data = _json.loads(clean)
+    except Exception:
+        return _fallback_relationship_state(session, kind)
+
+    fallback = _fallback_relationship_state(session, kind)
+    return RelationshipState(
+        label=str(data.get("relation_label") or data.get("relationship_label") or fallback.label),
+        summary=str(data.get("relationship_summary") or data.get("relation_summary") or fallback.summary),
+        guidance=str(data.get("relationship_guidance") or data.get("stance_guide") or fallback.guidance),
+        dynamic_personality=str(data.get("dynamic_personality") or data.get("mutable_personality") or fallback.dynamic_personality),
+        phase=str(data.get("relationship_phase") or fallback.phase),
+        situation=str(data.get("updated_situation") or data.get("situation") or fallback.situation),
+        nudge_style=str(data.get("nudge_style") or fallback.nudge_style),
+        nudge_examples=[str(item) for item in data.get("nudge_examples", fallback.nudge_examples)],
+        boundary_kind=kind,
+    )
+
+
+def _relationship_transition_prompt(persona: Persona, session: ConversationSession, kind: str) -> str:
+    boundary = "affection reached 100" if kind == "success" else "affection reached 0"
+    return (
+        f"The relationship just hit a boundary: {boundary}. The user is STILL the same person.\n"
+        f"You must redefine ONLY the relationship between {persona.name} and the user.\n"
+        "Keep the persona's core personality intact, but change the mutable/dynamic stance based on this new stage.\n"
+        f"Current relationship label: {session.current_relationship_label}\n"
+        f"Current summary: {session.current_relationship_summary}\n"
+        f"Current dynamic personality: {session.dynamic_personality}\n"
+        f"Persona background/job/context: {persona.background}\n"
+        f"Situation: {session.relationship_state.situation or persona.situation}\n"
+        "Respond with ONLY valid JSON:\n"
+        "{\n"
+        '  "relation_label": "new relationship title such as dating, married cofounders, bitter exes, career rivals, sworn enemies",\n'
+        '  "relationship_phase": "short phase name",\n'
+        '  "relationship_summary": "one sentence describing the new relationship",\n'
+        '  "relationship_guidance": "how the persona should now treat the user in chat",\n'
+        '  "dynamic_personality": "what changed in the persona while preserving core personality",\n'
+        '  "updated_situation": "updated current situation line for the header",\n'
+        '  "nudge_style": "brief tone description for silence nudges",\n'
+        '  "nudge_examples": ["nudge example 1", "nudge example 2", "nudge example 3"]\n'
+        "}\n"
+    )
+
+
+def _evolve_relationship(
+    provider: Any,
+    persona: Persona,
+    session: ConversationSession,
+    kind: str,
+) -> RelationshipState:
+    from .i18n import get_language
+
+    prompt = _relationship_transition_prompt(persona, session, kind)
+    try:
+        reply = provider.generate_reply(
+            persona,
+            session.recent_history(),
+            prompt,
+            session.affection_score,
+            session.mood.current,
+            difficulty=persona.difficulty,
+            language=get_language(),
+            special_mode=persona.special_mode,
+            **session.prompt_context(),
+        )
+        state = _parse_relationship_transition(reply.text, session, kind)
+    except Exception:
+        state = _fallback_relationship_state(session, kind)
+    session.apply_relationship_state(state)
+    session.add_system_message(f"[Relationship Shift] {state.label} — {state.summary}")
+    return state
+
+
 def _show_ending(
     live: Any,
     console: Console,
@@ -658,11 +870,53 @@ def _show_ending(
     session: ConversationSession,
     kind: str,
     provider: Any,
-) -> None:
-    """Show full-screen game over or success ending with LLM-generated report."""
+) -> str:
+    """Show boundary options, optional report, and relationship evolution."""
     from rich.align import Align
+    from rich.console import Group as RichGroup
     from rich.panel import Panel
     from rich.text import Text
+    from .wide_input import wide_input
+
+    live.stop()
+    console.clear()
+
+    color = "red" if kind == "game_over" else "bright_green"
+    boundary_title = t("game_over") if kind == "game_over" else t("success")
+    console.print()
+    console.print(Align.center(Panel(
+        Text.assemble(
+            ("\n  ", ""),
+            (boundary_title, f"bold {color}"),
+            ("\n\n  Current relationship:  ", "bold"),
+            (f"{session.current_relationship_label}\n", f"bold {persona.accent_color}"),
+            ("  ", ""),
+            (f"{session.current_relationship_summary}\n", "white"),
+            ("\n  ", ""),
+            (t("ending_continue_prompt"), "dim"),
+            ("\n", ""),
+        ),
+        title=f"[bold {color}]Boundary Reached[/bold {color}]",
+        border_style=color,
+        width=80,
+        padding=(1, 2),
+    )))
+    console.print()
+
+    try:
+        choice = wide_input("")
+    except (EOFError, KeyboardInterrupt):
+        choice = ""
+    action = _resolve_ending_choice(choice)
+    if action == "back":
+        return "back"
+
+    if action == "continue_silent":
+        session.continue_after_ending(kind)
+        _evolve_relationship(provider, persona, session, "success" if kind == "success" else "failure")
+        if hasattr(live, "start"):
+            live.start(refresh=True)
+        return "continue"
 
     # Ask LLM for ending narrative + report
     ending_prompt = (
@@ -691,6 +945,7 @@ def _show_ending(
             difficulty=persona.difficulty,
             language=get_language(),
             special_mode=persona.special_mode,
+            **session.prompt_context(),
         )
         import json as _json
         raw = ending_reply.text
@@ -711,11 +966,9 @@ def _show_ending(
             "what_went_wrong": "",
             "rating": "?",
         }
-
-    live.stop()
+    next_state = _evolve_relationship(provider, persona, session, "success" if kind == "success" else "failure")
+    session.continue_after_ending(kind)
     console.clear()
-
-    color = "red" if kind == "game_over" else "bright_green"
     title = data.get("report_title", "END")
     rating = data.get("rating", "?")
 
@@ -762,10 +1015,13 @@ def _show_ending(
         ("  Grade:  ", "bold"),
         (f"{rating}\n\n", f"bold {color}"),
         ("  Final Affection:  ", "bold"),
-        (f"{session.affection_score}/100\n", f"bold {color}"),
+        (f"{100 if kind == 'success' else 0}/100\n", f"bold {color}"),
+        ("\n  Next Relationship:  ", "bold"),
+        (f"{next_state.label}\n", f"bold {persona.accent_color}"),
+        ("  ", ""),
+        (f"{next_state.summary}\n", "white"),
     ))
 
-    from rich.console import Group as RichGroup
     panel_body = RichGroup(*lines)
     console.print()
     console.print(Align.center(Panel(
@@ -776,12 +1032,13 @@ def _show_ending(
         padding=(1, 2),
     )))
     console.print()
-    console.print(Align.center(Text("Press Enter to return to main menu", style="dim")))
     try:
-        from .wide_input import wide_input
         wide_input("")
     except (EOFError, KeyboardInterrupt):
         pass
+    if hasattr(live, "start"):
+        live.start(refresh=True)
+    return "continue"
 
 
 def _finish_job(
@@ -804,12 +1061,14 @@ def _finish_job(
         return (
             BackgroundJob(
                 "reply",
-                provider.generate_reply,
-                persona,
-                session.recent_history(),
-                transcript,
-                session.affection_score,
-                session.mood.current,
+                lambda: provider.generate_reply(
+                    persona,
+                    session.recent_history(),
+                    transcript,
+                    session.affection_score,
+                    session.mood.current,
+                    **session.prompt_context(),
+                ),
             ),
             previous_delivery,
             "voice transcript captured",
@@ -823,7 +1082,11 @@ def _finish_job(
 
         # ProviderReply now has parsed fields from LLM JSON
         actual_text = reply.text  # already clean
-        session.affection_score = max(0, min(100, session.affection_score + reply.affection_delta))
+        latest_user_text = next(
+            (message.text for message in reversed(session.messages) if message.role == "user"),
+            "",
+        )
+        session.apply_affection_delta(reply.affection_delta, latest_user_text, source="reply")
         if reply.mood and reply.mood in ("neutral", "happy", "playful", "sulky", "excited", "worried", "flirty"):
             session.mood.shift(reply.mood)
         if reply.memory_update:
@@ -986,6 +1249,7 @@ def _handle_key(
                 difficulty=persona.difficulty,
                 language=lang,
                 special_mode=persona.special_mode,
+                **session.prompt_context(),
             ),
         )
         return {
@@ -1216,6 +1480,7 @@ def _handle_command(
             session_dir=session_dir,
             persona=session.persona,
             messages=session.messages,
+            relationship_state=session.export_state().get("relationship_state"),
         )
         session.add_system_message(
             f"Exported session to {json_path} and {markdown_path}"
@@ -1362,18 +1627,29 @@ def _render_header(persona: Persona, session: ConversationSession):
     hearts = "".join("❤️" if i < bar_filled // 4 else "🤍" for i in range(5))
     affection_bar = f"{hearts}  [bold]{affection}[/bold][dim]/100[/dim]"
 
-    mode_icon = {"girlfriend": "💕", "crush": "💘"}.get(persona.relationship_mode, "💬")
+    relation = session.current_relationship_label
+    relation_lower = relation.lower()
+    if any(token in relation_lower for token in ("married", "wife", "husband", "spouse")):
+        mode_icon = "💍"
+    elif any(token in relation_lower for token in ("dating", "girlfriend", "boyfriend", "fiance")):
+        mode_icon = "💕"
+    elif any(token in relation_lower for token in ("enemy", "rival", "ex")):
+        mode_icon = "⚔"
+    else:
+        mode_icon = {"girlfriend": "💕", "crush": "💘"}.get(persona.relationship_mode, "💬")
 
     body = Text.assemble(
         (f" {mode_icon} ", ""),
         (persona.name, f"bold {persona.accent_color}"),
         (f"  {persona.age}세", "dim"),
         ("  ·  ", "dim"),
-        (persona.relationship_mode, f"italic {persona.accent_color}"),
+        (relation, f"italic {persona.accent_color}"),
         ("  ·  ", "dim"),
         (f"{mood_emoji} {session.mood.current}", ""),
         ("\n ", ""),
-        (persona.situation, "dim"),
+        (session.current_relationship_summary, f"bold {persona.accent_color}"),
+        ("\n ", ""),
+        (session.relationship_state.situation or persona.situation, "dim"),
     )
     return Panel(
         body,
@@ -1524,12 +1800,6 @@ def _render_trace(trace: RuntimeTrace, persona: Persona, session: ConversationSe
     table.add_row("Affection", f"{aff_bar} {aff}")
     table.add_row("", "")
 
-    # Provider info
-    table.add_row("Provider", f"[cyan]{trace.provider_name}[/cyan]")
-    table.add_row("Model", trace.provider_model or "[dim]default[/dim]")
-    table.add_row("Perf", f"[yellow]{trace.performance_mode}[/yellow]")
-    table.add_row("", "")
-
     # Timers
     nudge_str = f"[yellow]{trace.pending_nudge_in}s[/yellow]" if trace.pending_nudge_in is not None else "[dim]-[/dim]"
     init_str = f"[cyan]{trace.pending_initiative_in}s[/cyan]" if trace.pending_initiative_in is not None else "[dim]-[/dim]"
@@ -1642,6 +1912,8 @@ def _build_render_key(
         tuple(trace.remote_memory_hits),
         trace.status_line,
         session.affection_score,
+        session.current_relationship_label,
+        session.current_relationship_summary,
         session.mood.current,
         session.mood.intensity,
         scroll_offset,

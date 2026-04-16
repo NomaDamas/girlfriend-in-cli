@@ -45,7 +45,7 @@ class SceneState:
     rejection_count: int = 0
     scene_history: list[str] = field(default_factory=list)
     pending_proposal: EvaluatorResult | None = None
-    eval_interval: int = 7
+    eval_interval: int = 4
     max_rejections: int = 3
 
     def should_evaluate(self) -> bool:
@@ -120,6 +120,7 @@ def build_evaluator_prompt(
     mood: MoodType,
     recent_messages: list[ChatMessage],
     available: list[Scene],
+    language: str = "ko",
 ) -> str:
     """Build the evaluator LLM prompt."""
     scene_name = current_scene.name if current_scene else "없음 (시작)"
@@ -135,10 +136,12 @@ def build_evaluator_prompt(
         f"Persona: {persona.name} ({persona.relationship_mode})\n"
         f"Available locations: {scene_list}\n\n"
         f"Recent conversation:\n{history}\n\n"
+        f"Respond in language={language}.\n"
         "Respond with ONLY valid JSON (no markdown, no explanation):\n"
-        '{"should_move": true/false, "next_scene": "장소이름", "proposal_line": "자연스러운 제안 대사 (한국어)"}\n\n'
+        '{"should_move": true/false, "next_scene": "장소이름", "proposal_line": "자연스러운 제안 대사"}\n\n'
         "Rules:\n"
-        "- should_move=true only if the conversation has reached a natural pause or topic change\n"
+        "- should_move=true if the conversation reached a natural pause, topic shift, emotional upswing, or a clear chance to invite the user somewhere\n"
+        "- when affection is high or the mood is flirty/excited/playful, be more proactive about suggesting a move\n"
         "- proposal_line must sound like the persona naturally suggesting to go somewhere\n"
         "- If should_move=false, set next_scene and proposal_line to empty strings\n"
     )
@@ -151,6 +154,7 @@ def build_report_prompt(
     messages: list[ChatMessage],
     affection: int,
     mood: MoodType,
+    language: str = "ko",
 ) -> str:
     """Build the report card + scene summary LLM prompt."""
     history = "\n".join(f"{m.role}: {m.text}" for m in messages if m.role != "system")
@@ -162,11 +166,12 @@ def build_report_prompt(
         f"Persona: {persona.name}, {persona.relationship_mode}\n"
         f"Affection: {affection}/100, Mood: {mood}\n\n"
         f"Conversation in this scene:\n{history}\n\n"
+        f"Write all free-text fields in language={language}.\n"
         "Respond with ONLY valid JSON (no markdown):\n"
         "{\n"
         '  "highlights": ["대화 하이라이트 1", "대화 하이라이트 2", "대화 하이라이트 3"],\n'
-        '  "advice": "다음 장소에서의 관계 조언 (한국어, 1-2문장)",\n'
-        '  "scene_summary": "이 장소에서의 대화 요약 (한국어, 2-3문장, 다음 장소 context로 사용됨)"\n'
+        '  "advice": "다음 장소에서의 관계 조언 (1-2문장)",\n'
+        '  "scene_summary": "이 장소에서의 대화 요약 (2-3문장, 다음 장소 context로 사용됨)"\n'
         "}\n"
     )
 

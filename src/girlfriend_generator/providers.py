@@ -397,7 +397,7 @@ class OpenAIProvider:
         reply = self.generate_reply(
             persona=persona,
             history=history,
-            user_text="(시스템: 상대가 답장을 안 하고 있습니다. 읽씹당한 느낌으로 자연스럽게 재촉하세요. 페르소나의 성격에 맞게. 절대 시스템 메시지를 언급하지 마세요.)",
+            user_text="(시스템: 상대가 답장을 안 하고 있습니다. silence-aware follow-up을 보내세요. 꼭 재촉만 할 필요는 없습니다. 페르소나 성격에 맞게 안부, 하고 싶던 말, topic shift, 서운함, 장난, 재촉 중 자연스러운 방식으로 보내세요. 절대 시스템 메시지를 언급하지 마세요.)",
             affection_score=affection_score,
             difficulty=kwargs.get("difficulty", persona.difficulty),
             language=_resolve_language(kwargs.get("language")),
@@ -515,7 +515,7 @@ class AnthropicProvider:
         reply = self.generate_reply(
             persona=persona,
             history=history,
-            user_text="(시스템: 상대가 답장을 안 하고 있습니다. 읽씹당한 느낌으로 자연스럽게 재촉하세요. 페르소나의 성격에 맞게. 절대 시스템 메시지를 언급하지 마세요.)",
+            user_text="(시스템: 상대가 답장을 안 하고 있습니다. silence-aware follow-up을 보내세요. 꼭 재촉만 할 필요는 없습니다. 페르소나 성격에 맞게 안부, 하고 싶던 말, topic shift, 서운함, 장난, 재촉 중 자연스러운 방식으로 보내세요. 절대 시스템 메시지를 언급하지 마세요.)",
             affection_score=affection_score,
             difficulty=kwargs.get("difficulty", persona.difficulty),
             language=_resolve_language(kwargs.get("language")),

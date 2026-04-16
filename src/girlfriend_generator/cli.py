@@ -23,6 +23,17 @@ from .updater import maybe_prompt_for_update
 from .version import __version__
 
 
+def _display_relationship_mode(mode: str) -> str:
+    from .i18n import get_language
+
+    lang = get_language()
+    mapping = {
+        "crush": {"ko": "썸", "en": "Crush", "ja": "片思い", "zh": "暧昧对象"},
+        "girlfriend": {"ko": "연인", "en": "Girlfriend", "ja": "恋人", "zh": "恋人"},
+    }
+    return mapping.get(mode, {}).get(lang, mode)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Terminal-only romance simulation chat for vibe coding breaks."
@@ -682,16 +693,9 @@ def _show_main_menu(
             fresh = discover_personas(bundled_persona_dir()) if bundled_persona_dir().exists() else []
             return _show_main_menu(fresh, args, skip_intro=True)
 
-        if action == "usage_guide":
+        if action == "guide":
             console.print()
-            _show_usage_guide(console, args)
-            console.clear()
-            fresh = discover_personas(bundled_persona_dir()) if bundled_persona_dir().exists() else []
-            return _show_main_menu(fresh, args, skip_intro=True)
-
-        if action == "setup_guide":
-            console.print()
-            _provider_setup_guide(console, args)
+            _show_guides_menu(console, args)
             console.clear()
             fresh = discover_personas(bundled_persona_dir()) if bundled_persona_dir().exists() else []
             return _show_main_menu(fresh, args, skip_intro=True)
@@ -725,17 +729,39 @@ def _build_main_menu_actions(
         ("new_chat", MenuItem(t("new_chat", lang), t("new_chat_desc", lang), icon="💬")),
         ("chat_rooms", MenuItem(f"{t('chat_rooms', lang)} ({room_count})", t("chat_rooms_desc", lang), icon="💌")),
         ("persona_studio", MenuItem(t("persona_studio", lang), t("persona_studio_desc", lang), icon="✨")),
-        ("usage_guide", MenuItem(t("usage_guide", lang), t("usage_guide_desc", lang), icon="📘")),
-    ]
-    if _provider_needs_setup(args):
-        actions.append(
-            ("setup_guide", MenuItem(t("setup_guide", lang), t("setup_guide_desc", lang), icon="🧭"))
-        )
-    actions.extend([
+        ("guide", MenuItem(t("guide", lang), t("guide_desc", lang), icon="📚")),
         ("settings", MenuItem(t("settings", lang), t("settings_desc", lang), icon="⚙️")),
         ("quit", MenuItem(t("quit", lang), t("quit_desc", lang), icon="👋")),
-    ])
+    ]
     return actions
+
+
+def _show_guides_menu(console: "Console", args: argparse.Namespace) -> None:  # type: ignore[name-defined]
+    from .i18n import get_language, t
+    from .selector import MenuItem, arrow_select
+
+    lang = get_language()
+    items = [
+        MenuItem(t("usage_guide", lang), t("usage_guide_desc", lang), icon="📘"),
+        MenuItem(t("setup_guide", lang), t("setup_guide_desc", lang), icon="🧭"),
+        MenuItem(t("back", lang), "", icon="←"),
+    ]
+
+    while True:
+        choice = arrow_select(
+            console,
+            items,
+            title=t("guide", lang),
+            border_style="bright_magenta",
+        )
+        if choice is None or choice == 2:
+            return
+        if choice == 0:
+            _show_usage_guide(console, args)
+            return
+        if choice == 1:
+            _provider_setup_guide(console, args)
+            return
 
 
 def _provider_setup_guide(console: "Console", args: argparse.Namespace) -> None:  # type: ignore[name-defined]
@@ -845,15 +871,8 @@ def _persona_studio(
             MenuItem("Import Persona", "From file, URL, or pasted JSON", icon="📥"),
             MenuItem("Create Manually", "Step-by-step wizard", icon="✨"),
         ]
-        for cp in custom_personas:
-            try:
-                data = json.loads(cp.read_text(encoding="utf-8"))
-                name = data.get("name", cp.stem)
-            except Exception:
-                name = cp.stem
-            items.append(MenuItem(f"Edit: {name}", cp.name, icon="✏️"))
-
         if custom_personas:
+            items.append(MenuItem("Created Personas", "Browse and edit saved personas", icon="🗂️"))
             items.append(MenuItem("Delete a Persona", "Remove a custom persona", icon="🗑️"))
         items.append(MenuItem("Back", "", icon="←"))
 
@@ -881,19 +900,42 @@ def _persona_studio(
         if choice == 2:  # Create Manually
             return _create_persona_wizard(console)
 
-        if custom_personas and choice == len(items) - 2:  # Delete
-            _delete_persona(console, custom_personas)
-            continue
-
-        # Edit: choice 3..N maps to custom_personas[choice-3]
-        edit_idx = choice - 3
-        if 0 <= edit_idx < len(custom_personas):
-            result = _edit_persona(console, custom_personas[edit_idx])
+        if custom_personas and choice == 3:  # Created Personas
+            result = _browse_created_personas(console, custom_personas)
             if result is not None:
                 return result
             continue
 
+        if custom_personas and choice == 4:  # Delete
+            _delete_persona(console, custom_personas)
+            continue
+
         return None
+
+
+def _browse_created_personas(console: "Console", custom_personas: list[Path]) -> Path | None:  # type: ignore[name-defined]
+    from .selector import MenuItem, arrow_select
+
+    items = []
+    for cp in custom_personas:
+        try:
+            data = json.loads(cp.read_text(encoding="utf-8"))
+            name = data.get("name", cp.stem)
+            mode = _display_relationship_mode(data.get("relationship_mode", "?"))
+            items.append(MenuItem(f"Edit: {name}", mode, icon="✏️"))
+        except Exception:
+            items.append(MenuItem(f"Edit: {cp.stem}", cp.name, icon="✏️"))
+    items.append(MenuItem("Back", "", icon="←"))
+
+    choice = arrow_select(
+        console,
+        items,
+        title="Created Personas",
+        border_style="bright_green",
+    )
+    if choice is None or choice == len(items) - 1:
+        return None
+    return _edit_persona(console, custom_personas[choice])
 
 
 def _import_persona(console: "Console") -> Path | None:  # type: ignore[name-defined]
@@ -1396,7 +1438,8 @@ def _show_chat_rooms(
             try:
                 data = json.loads(sf.read_text(encoding="utf-8"))
                 persona_name = data.get("persona", {}).get("name", "?")
-                mode = data.get("persona", {}).get("relationship_mode", "?")
+                raw_mode = data.get("persona", {}).get("relationship_mode", "?")
+                mode = _display_relationship_mode(raw_mode)
                 msgs = data.get("messages", [])
                 msg_count = len(msgs)
                 # Last message preview
@@ -1411,6 +1454,7 @@ def _show_chat_rooms(
                     "path": sf,
                     "persona_name": persona_name,
                     "mode": mode,
+                    "raw_mode": raw_mode,
                     "msg_count": msg_count,
                     "last_msg": last_msg,
                     "ts": ts,
@@ -1427,11 +1471,11 @@ def _show_chat_rooms(
 
         menu_items = []
         for r in rooms:
-            icon = _MODE_ICONS.get(r["mode"], "💬")
+            icon = _MODE_ICONS.get(r.get("raw_mode", "?"), "💬")
             preview = r["last_msg"] if r["last_msg"] else "(empty)"
             menu_items.append(MenuItem(
                 f"{r['persona_name']}  ({r['msg_count']})",
-                preview,
+                f"{r['mode']}  |  {preview}",
                 icon=icon,
             ))
         menu_items.append(MenuItem("Back", "Return to main menu", icon="←"))
@@ -1509,15 +1553,15 @@ def _pick_session_to_resume(
             data = json.loads(sf.read_text(encoding="utf-8"))
             persona_name = data.get("persona", {}).get("name", "?")
             msg_count = len(data.get("messages", []))
-            mode = data.get("persona", {}).get("relationship_mode", "?")
+            mode = _display_relationship_mode(data.get("persona", {}).get("relationship_mode", "?"))
             session_summaries.append({
                 "path": sf,
                 "persona_name": persona_name,
             })
-            icon = _MODE_ICONS.get(mode, "💬")
+            icon = _MODE_ICONS.get(data.get("persona", {}).get("relationship_mode", "?"), "💬")
             menu_items.append(MenuItem(
                 persona_name,
-                f"{msg_count} messages  |  {sf.stem}",
+                f"{mode}  |  {msg_count} messages  |  {sf.stem}",
                 icon=icon,
             ))
         except Exception:

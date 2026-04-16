@@ -8,9 +8,12 @@ from girlfriend_generator.app import (
     _finish_job,
     _handle_command,
     _handle_key,
+    _localized_relationship_label,
     _render_header,
     _render_screen,
     _render_trace,
+    _show_full_coach_panel,
+    _show_scrollable_text_panel,
     _show_ending,
     _sync_provider_trace,
     run_chat_app,
@@ -179,8 +182,9 @@ def test_render_screen_shows_typing_and_trace_visibility() -> None:
     rendered = _render_to_text(renderable)
 
     assert "trace" in rendered
-    assert persona.relationship_mode in rendered
+    assert "썸" in rendered
     assert "typing" in rendered
+    assert "입력창이 비어 있을 때" in rendered
 
 
 def test_render_trace_shows_idle_timers() -> None:
@@ -217,7 +221,7 @@ def test_render_header_shows_current_relationship_at_top() -> None:
 
     rendered = _render_to_text(_render_header(persona, session))
 
-    assert "married cofounders" in rendered
+    assert "결혼한 공동창업자" in rendered
     assert "같이 브랜드를 운영하면서 이미 결혼한 상태" in rendered
 
 
@@ -969,3 +973,82 @@ def test_show_ending_renders_charm_fields(monkeypatch) -> None:
     assert "Charm Type" in rendered
     assert "자연스러운 장난기" in rendered
     assert "playful" in rendered
+
+
+def test_show_scrollable_text_panel_falls_back_to_plain_render_without_tty() -> None:
+    console = Console(record=True, width=60)
+
+    _show_scrollable_text_panel(
+        console,
+        title="Report",
+        border_style="green",
+        lines=[f"line {idx}" for idx in range(1, 6)],
+        width=50,
+    )
+
+    rendered = console.export_text()
+    assert "line 1" in rendered
+    assert "line 5" in rendered
+
+
+def test_handle_key_scroll_status_explains_empty_draft_requirement() -> None:
+    persona = _load_test_persona()
+    session = ConversationSession(persona=persona)
+    session.bootstrap()
+
+    outcome = _handle_key(
+        key="\x1b[A",
+        draft="",
+        session=session,
+        persona=persona,
+        provider=object(),
+        pending_job=None,
+        pending_delivery=None,
+        voice_input=DisabledVoiceInput(),
+        voice_output_available=False,
+        voice_output_enabled=False,
+        show_trace=True,
+        session_dir=Path("sessions"),
+    )
+
+    assert "입력창이 비어 있을 때" in outcome["status_line"]
+
+
+def test_endless_mode_can_trigger_boundary_again() -> None:
+    persona = _load_test_persona()
+    session = ConversationSession(persona=persona)
+    session.continue_after_ending("success")
+
+    session.affection_score = 99
+    session.boundary_cooldown = False
+    assert session.consume_boundary_trigger() == "success"
+
+    session.affection_score = 50
+    session._update_boundary_gate()
+    session.affection_score = 1
+    assert session.consume_boundary_trigger() == "game_over"
+
+
+def test_show_full_coach_panel_renders_full_feedback() -> None:
+    class _DummyLive:
+        def stop(self):
+            return None
+
+        def start(self, refresh=False):
+            return None
+
+    persona = _load_test_persona()
+    session = ConversationSession(persona=persona)
+    session.last_coach_feedback = "긴 피드백 " * 20
+    console = Console(record=True, width=100)
+
+    _show_full_coach_panel(_DummyLive(), console, session)
+
+    rendered = console.export_text()
+    assert "Dating Coach" in rendered
+    assert "긴 피드백" in rendered
+
+
+def test_localized_relationship_label_maps_common_labels(monkeypatch) -> None:
+    monkeypatch.setattr("girlfriend_generator.app.get_language", lambda: "ko")
+    assert _localized_relationship_label("career rivals") == "업계 라이벌"

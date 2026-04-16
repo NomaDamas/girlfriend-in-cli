@@ -64,6 +64,7 @@ class ConversationSession:
     proactive_due_at: datetime | None = None  # LLM-decided proactive message time
     strategy_uses_this_scene: int = 0  # /strategy discussions used in current scene
     max_strategy_per_scene: int = 3
+    boundary_cooldown: bool = False
 
     def __post_init__(self) -> None:
         self.relationship_state = RelationshipState(
@@ -98,6 +99,7 @@ class ConversationSession:
         else:
             self.affection_score = self._clamp_affection_score(min(92, self.affection_score))
             self.mood.shift("happy", intensity=0.75)
+        self.boundary_cooldown = True
         self.schedule_initiative(now)
 
     @property
@@ -194,7 +196,6 @@ class ConversationSession:
             self.awaiting_user_reply
             and self.nudge_due_at is not None
             and now >= self.nudge_due_at
-            and self.nudge_count < self.persona.nudge_policy.max_nudges
         )
 
     def next_nudge_text(self) -> str:
@@ -219,6 +220,7 @@ class ConversationSession:
         self.nudge_due_at = now + timedelta(
             seconds=self._follow_up_after_seconds()
         )
+        self._update_boundary_gate()
         return text
 
     def consume_nudge(self, now: datetime | None = None) -> str:
@@ -260,6 +262,20 @@ class ConversationSession:
     def current_nudge_templates(self) -> list[str]:
         return self.relationship_state.nudge_examples or self.persona.nudge_policy.templates
 
+    def consume_boundary_trigger(self) -> str | None:
+        self._update_boundary_gate()
+        low = 1 if self.endless_mode else 0
+        high = 99 if self.endless_mode else 100
+        if self.boundary_cooldown:
+            return None
+        if self.affection_score <= low:
+            self.boundary_cooldown = True
+            return "game_over"
+        if self.affection_score >= high:
+            self.boundary_cooldown = True
+            return "success"
+        return None
+
     def export_state(self) -> dict[str, object]:
         return {
             "affection_score": self.affection_score,
@@ -296,6 +312,7 @@ class ConversationSession:
             self.positive_affection_streak = 0
 
         self.affection_score = self._clamp_affection_score(self.affection_score + applied)
+        self._update_boundary_gate()
         return applied
 
     def _apply_positive_affection_delta(self, raw_delta: int, lower: str, variance: float) -> int:
@@ -384,6 +401,10 @@ class ConversationSession:
         if self.endless_mode:
             return max(1, min(99, score))
         return max(0, min(100, score))
+
+    def _update_boundary_gate(self) -> None:
+        if 5 <= self.affection_score <= 95:
+            self.boundary_cooldown = False
 
     def _idle_after_seconds(self) -> int:
         base = self.persona.nudge_policy.idle_after_seconds

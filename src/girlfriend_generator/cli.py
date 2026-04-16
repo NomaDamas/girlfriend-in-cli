@@ -30,6 +30,7 @@ DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434/v1"
 _RUNTIME_PREF_KEYS = {
     "provider",
     "provider_model",
+    "provider_models",
     "ollama_base_url",
     "performance",
     "voice_output",
@@ -177,6 +178,30 @@ def _has_any_flags(args: argparse.Namespace) -> bool:
     ])
 
 
+def _has_explicit_flag(raw_args: list[str], flag_name: str) -> bool:
+    return any(arg == flag_name or arg.startswith(f"{flag_name}=") for arg in raw_args)
+
+
+def _get_saved_model_for_provider(provider: str) -> str | None:
+    from .i18n import get_pref
+
+    saved_models = get_pref("provider_models")
+    if isinstance(saved_models, dict):
+        saved_model = saved_models.get(provider)
+        if isinstance(saved_model, str) and saved_model.strip():
+            return saved_model
+
+    legacy_model = get_pref("provider_model")
+    saved_provider = get_pref("provider")
+    if (
+        isinstance(legacy_model, str)
+        and legacy_model.strip()
+        and saved_provider == provider
+    ):
+        return legacy_model
+    return None
+
+
 def _apply_saved_runtime_settings(
     args: argparse.Namespace,
     parser: argparse.ArgumentParser,
@@ -185,32 +210,44 @@ def _apply_saved_runtime_settings(
     from .i18n import get_pref
 
     provider_default = parser.get_default("provider")
-    if "--provider" not in raw_args and args.provider == provider_default:
+    if not _has_explicit_flag(raw_args, "--provider") and args.provider == provider_default:
         saved_provider = get_pref("provider")
         if saved_provider in {"openai", "anthropic", "ollama", "remote"}:
             args.provider = str(saved_provider)
 
-    if "--model" not in raw_args and getattr(args, "model", None) is None:
-        saved_model = get_pref("provider_model")
-        if isinstance(saved_model, str) and saved_model.strip():
+    if not _has_explicit_flag(raw_args, "--model") and getattr(args, "model", None) is None:
+        saved_model = _get_saved_model_for_provider(args.provider)
+        if saved_model:
             args.model = saved_model
 
-    if "--ollama-base-url" not in raw_args and getattr(args, "ollama_base_url", None) is None:
+    if (
+        not _has_explicit_flag(raw_args, "--ollama-base-url")
+        and getattr(args, "ollama_base_url", None) is None
+    ):
         saved_ollama_base_url = get_pref("ollama_base_url")
         if isinstance(saved_ollama_base_url, str) and saved_ollama_base_url.strip():
             args.ollama_base_url = saved_ollama_base_url
 
-    if "--performance" not in raw_args and args.performance == parser.get_default("performance"):
+    if (
+        not _has_explicit_flag(raw_args, "--performance")
+        and args.performance == parser.get_default("performance")
+    ):
         saved_performance = get_pref("performance")
         if saved_performance in {"turbo", "balanced", "cinematic"}:
             args.performance = str(saved_performance)
 
-    if "--voice-output" not in raw_args and args.voice_output == parser.get_default("voice_output"):
+    if (
+        not _has_explicit_flag(raw_args, "--voice-output")
+        and args.voice_output == parser.get_default("voice_output")
+    ):
         saved_voice_output = get_pref("voice_output")
         if isinstance(saved_voice_output, bool):
             args.voice_output = saved_voice_output
 
-    if "--no-trace" not in raw_args and args.no_trace == parser.get_default("no_trace"):
+    if (
+        not _has_explicit_flag(raw_args, "--no-trace")
+        and args.no_trace == parser.get_default("no_trace")
+    ):
         saved_no_trace = get_pref("no_trace")
         if isinstance(saved_no_trace, bool):
             args.no_trace = saved_no_trace
@@ -230,9 +267,24 @@ def _apply_provider_defaults(args: argparse.Namespace) -> None:
 def _persist_runtime_settings(args: argparse.Namespace) -> None:
     from .i18n import set_pref
 
+    provider_models = {}
+    from .i18n import get_pref
+    saved_provider_models = get_pref("provider_models")
+    if isinstance(saved_provider_models, dict):
+        provider_models = {
+            str(key): str(value)
+            for key, value in saved_provider_models.items()
+            if isinstance(value, str) and value.strip()
+        }
+    if args.model:
+        provider_models[args.provider] = args.model
+    else:
+        provider_models.pop(args.provider, None)
+
     payload = {
         "provider": args.provider,
         "provider_model": args.model,
+        "provider_models": provider_models,
         "ollama_base_url": getattr(args, "ollama_base_url", None),
         "performance": args.performance,
         "voice_output": args.voice_output,

@@ -359,6 +359,68 @@ def test_apply_saved_runtime_settings_does_not_override_explicit_provider(monkey
     assert args.provider == "openai"
 
 
+def test_apply_saved_runtime_settings_does_not_override_equals_style_provider_flag(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    prefs_path = tmp_path / "prefs.json"
+    prefs_path.write_text(
+        '{"provider":"ollama","provider_models":{"ollama":"gemma4:26b"},"performance":"balanced"}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(i18n, "_PREFS_PATH", prefs_path)
+    parser = cli.build_parser()
+    raw_args = ["--provider=openai", "--performance=cinematic"]
+    args = parser.parse_args(raw_args)
+
+    cli._apply_saved_runtime_settings(args, parser, raw_args)
+
+    assert args.provider == "openai"
+    assert args.performance == "cinematic"
+    assert args.model is None
+
+
+def test_apply_saved_runtime_settings_restores_model_for_active_provider_only(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    prefs_path = tmp_path / "prefs.json"
+    prefs_path.write_text(
+        (
+            '{"provider":"ollama","provider_model":"legacy-ollama",'
+            '"provider_models":{"ollama":"gemma4:26b","openai":"gpt-4.1-mini"}}'
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(i18n, "_PREFS_PATH", prefs_path)
+    parser = cli.build_parser()
+    args = parser.parse_args(["--provider", "anthropic"])
+
+    cli._apply_saved_runtime_settings(args, parser, ["--provider", "anthropic"])
+
+    assert args.provider == "anthropic"
+    assert args.model is None
+
+
+def test_apply_saved_runtime_settings_uses_provider_specific_model_for_saved_provider(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    prefs_path = tmp_path / "prefs.json"
+    prefs_path.write_text(
+        '{"provider":"ollama","provider_models":{"ollama":"gemma4:26b","openai":"gpt-4.1-mini"}}',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(i18n, "_PREFS_PATH", prefs_path)
+    parser = cli.build_parser()
+    args = parser.parse_args([])
+
+    cli._apply_saved_runtime_settings(args, parser, [])
+
+    assert args.provider == "ollama"
+    assert args.model == "gemma4:26b"
+
+
 def test_build_persona_generator_config_falls_back_to_openai_for_ollama(monkeypatch) -> None:
     args = cli.build_parser().parse_args(["--provider", "ollama"])
     monkeypatch.setenv(cli.OLLAMA_BASE_URL_ENV, "http://127.0.0.1:11434/v1")
@@ -378,6 +440,28 @@ def test_build_persona_generator_config_keeps_anthropic_when_selected() -> None:
 
     assert config.provider == "anthropic"
     assert config.model == "claude-test"
+
+
+def test_persist_runtime_settings_keeps_models_scoped_per_provider(
+    monkeypatch,
+    tmp_path: Path,
+) -> None:
+    prefs_path = tmp_path / "prefs.json"
+    monkeypatch.setattr(i18n, "_PREFS_PATH", prefs_path)
+
+    openai_args = cli.build_parser().parse_args([])
+    openai_args.provider = "openai"
+    openai_args.model = "gpt-4.1-mini"
+    cli._persist_runtime_settings(openai_args)
+
+    ollama_args = cli.build_parser().parse_args(["--provider", "ollama"])
+    ollama_args.provider = "ollama"
+    ollama_args.model = "gemma4:26b"
+    ollama_args.ollama_base_url = "http://127.0.0.1:11434/v1"
+    cli._persist_runtime_settings(ollama_args)
+
+    data = prefs_path.read_text(encoding="utf-8")
+    assert '"provider_models": {"openai": "gpt-4.1-mini", "ollama": "gemma4:26b"}' in data
 
 
 def test_default_language_is_english(monkeypatch, tmp_path: Path) -> None:

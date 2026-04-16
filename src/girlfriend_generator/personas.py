@@ -49,6 +49,14 @@ def persona_from_pack(payload: dict[str, Any]) -> Persona:
         accent_color=payload.get("accent_color", "magenta"),
         provider_system_hint=payload.get("provider_system_hint", ""),
         context_summary=payload.get("context_summary") or payload.get("summary", ""),
+        core_personality=payload.get("core_personality")
+        or payload.get("identity", {}).get("core_personality", "")
+        or payload.get("background")
+        or payload.get("identity", {}).get("background", ""),
+        dynamic_personality_seed=payload.get("dynamic_personality")
+        or payload.get("relationship", {}).get("dynamic_personality", "")
+        or payload.get("situation")
+        or payload.get("summary", ""),
         style_profile=StyleProfile(
             **payload.get(
                 "style_profile",

@@ -12,6 +12,7 @@ def export_session(
     session_dir: Path,
     persona: Persona,
     messages: Iterable[ChatMessage],
+    relationship_state: dict | None = None,
 ) -> tuple[Path, Path]:
     session_dir.mkdir(parents=True, exist_ok=True)
     messages = list(messages)
@@ -44,6 +45,7 @@ def export_session(
                 "signature_phrases": persona.style_profile.signature_phrases,
             },
         },
+        "relationship_state": relationship_state or {},
         "messages": [
             {
                 "role": message.role,
@@ -58,7 +60,7 @@ def export_session(
         encoding="utf-8",
     )
     markdown_path.write_text(
-        render_markdown(persona=persona, messages=messages),
+        render_markdown(persona=persona, messages=messages, relationship_state=relationship_state),
         encoding="utf-8",
     )
     return json_path, markdown_path
@@ -75,12 +77,14 @@ def _build_unique_base_name(session_dir: Path, base_name: str) -> str:
     return candidate
 
 
-def render_markdown(persona: Persona, messages: list[ChatMessage]) -> str:
+def render_markdown(persona: Persona, messages: list[ChatMessage], relationship_state: dict | None = None) -> str:
+    relation = relationship_state or {}
     lines = [
         f"# Session with {persona.name}",
         "",
-        f"- Relationship mode: {persona.relationship_mode}",
-        f"- Situation: {persona.situation}",
+        f"- Relationship mode: {relation.get('label', persona.relationship_mode)}",
+        f"- Relationship summary: {relation.get('summary', persona.situation)}",
+        f"- Situation: {relation.get('situation', persona.situation)}",
         "",
         "## Transcript",
         "",
@@ -96,6 +100,15 @@ def render_markdown(persona: Persona, messages: list[ChatMessage]) -> str:
 
 def load_session_messages(path: Path) -> list[ChatMessage]:
     payload = json.loads(path.read_text(encoding="utf-8"))
+    return _parse_messages(payload)
+
+
+def load_session_snapshot(path: Path) -> tuple[list[ChatMessage], dict]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return _parse_messages(payload), dict(payload.get("relationship_state", {}))
+
+
+def _parse_messages(payload: dict) -> list[ChatMessage]:
     messages = []
     for item in payload.get("messages", []):
         created_at = datetime.fromisoformat(item["created_at"])

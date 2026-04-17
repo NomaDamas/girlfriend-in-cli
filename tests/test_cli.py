@@ -522,9 +522,11 @@ def test_build_persona_generator_config_falls_back_to_openai_for_ollama(
 
 def test_provider_model_choices_include_latest_official_entries() -> None:
     assert "gpt-5.4" in cli._provider_model_choices("openai")
+    assert "gpt-5.4-pro" in cli._provider_model_choices("openai")
     assert "gpt-5.4-mini" in cli._provider_model_choices("openai")
-    assert "claude-opus-4-1-20250805" in cli._provider_model_choices("anthropic")
-    assert "claude-sonnet-4-0" in cli._provider_model_choices("anthropic")
+    assert "claude-opus-4-7" in cli._provider_model_choices("anthropic")
+    assert "claude-sonnet-4-5" in cli._provider_model_choices("anthropic")
+    assert "claude-haiku-4-5" in cli._provider_model_choices("anthropic")
     assert "llama4" in cli._provider_model_choices("ollama")
     assert "qwen3" in cli._provider_model_choices("ollama")
 

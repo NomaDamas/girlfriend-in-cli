@@ -40,16 +40,15 @@ _RUNTIME_PREF_KEYS = {
 
 _OPENAI_MODEL_CHOICES = [
     "gpt-5.4",
+    "gpt-5.4-pro",
     "gpt-5.4-mini",
     "gpt-5.4-nano",
 ]
 
 _ANTHROPIC_MODEL_CHOICES = [
-    "claude-opus-4-1-20250805",
-    "claude-opus-4-0",
-    "claude-opus-4-20250514",
-    "claude-sonnet-4-0",
-    "claude-sonnet-4-20250514",
+    "claude-opus-4-7",
+    "claude-sonnet-4-5",
+    "claude-haiku-4-5",
 ]
 
 _OLLAMA_MODEL_CHOICES = [

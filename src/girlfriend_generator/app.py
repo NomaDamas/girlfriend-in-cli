@@ -170,6 +170,21 @@ class RawKeyboard:
             return data.decode("utf-8", errors="ignore") or None
 
 
+def _drain_pending_stdin() -> None:
+    """Best-effort drain of queued stdin bytes between nested UI phases."""
+    if not sys.stdin.isatty():
+        return
+    fd = sys.stdin.fileno()
+    for _ in range(8):
+        ready, _, _ = select.select([sys.stdin], [], [], 0)
+        if not ready:
+            break
+        try:
+            os.read(fd, 64)
+        except OSError:
+            break
+
+
 
 def run_chat_app(config: AppConfig) -> int:
     console = Console()
@@ -951,6 +966,8 @@ def _show_scrollable_text_panel(
         console.print()
         return
 
+    _drain_pending_stdin()
+    opened_at = time.monotonic()
     with RawKeyboard() as keyboard, Live(
         _panel(),
         console=console,
@@ -959,6 +976,9 @@ def _show_scrollable_text_panel(
         while True:
             key = keyboard.poll(0.05)
             if key is None:
+                continue
+            # Ignore an immediate trailing Enter/Esc from the previous input phase.
+            if (time.monotonic() - opened_at) < 0.2 and key in {"\r", "\n", "\x1b"}:
                 continue
             if key in {"\r", "\n", "\x1b"}:
                 break

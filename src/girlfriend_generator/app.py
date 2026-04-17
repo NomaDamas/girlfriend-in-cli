@@ -960,12 +960,6 @@ def _show_scrollable_text_panel(
         console.print()
         return
 
-    if total_lines <= page_height:
-        console.print()
-        console.print(_panel())
-        console.print()
-        return
-
     _drain_pending_stdin()
     opened_at = time.monotonic()
     with RawKeyboard() as keyboard, Live(
@@ -2022,15 +2016,18 @@ def _render_message(
 
 
 def _render_composer(draft: str, status_line: str, user_typing: bool):
-    if draft:
-        prompt = f" {draft}[blink]|[/blink]"
-    else:
-        prompt = " [dim italic]메시지를 입력하세요...[/dim italic]"
     keys = "[grey70]Enter[/grey70] 전송  [grey70]Esc[/grey70] 뒤로  [grey70]입력창 비었을 때 ↑↓[/grey70] 이전 대화  [grey70]/help[/grey70]"
-    status = f"[dim italic]{status_line}[/dim italic]"
     title = "[bright_blue]typing...[/bright_blue]" if user_typing else "[dim]message[/dim]"
+    body = Text()
+    if draft:
+        body.append(f" {draft}")
+        body.append("|", style="blink")
+    else:
+        body.append(" 메시지를 입력하세요...", style="dim italic")
+    body.append("\n\n ")
+    body.append(status_line, style="dim italic")
     return Panel(
-        f"{prompt}\n\n {status}",
+        body,
         title=title,
         subtitle=keys,
         border_style="bright_blue" if user_typing else "grey37",

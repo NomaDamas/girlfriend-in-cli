@@ -37,6 +37,50 @@ _RUNTIME_PREF_KEYS = {
     "no_trace",
 }
 
+_OPENAI_MODEL_CHOICES = [
+    "gpt-5.2",
+    "gpt-5.2-pro",
+    "gpt-5.2-codex",
+    "gpt-5",
+    "gpt-5-mini",
+    "gpt-5-nano",
+    "gpt-4.1",
+    "gpt-4.1-mini",
+    "gpt-oss-120b",
+    "gpt-oss-20b",
+]
+
+_ANTHROPIC_MODEL_CHOICES = [
+    "claude-opus-4-1-20250805",
+    "claude-opus-4-0",
+    "claude-opus-4-20250514",
+    "claude-sonnet-4-0",
+    "claude-sonnet-4-20250514",
+    "claude-3-7-sonnet-latest",
+    "claude-3-7-sonnet-20250219",
+    "claude-3-5-sonnet-latest",
+    "claude-3-5-sonnet-20241022",
+    "claude-3-5-haiku-latest",
+    "claude-3-5-haiku-20241022",
+    "claude-3-haiku-20240307",
+]
+
+_OLLAMA_MODEL_CHOICES = [
+    "llama4",
+    "llama3.3",
+    "llama3.2",
+    "llama3.1",
+    "qwen3",
+    "qwen2.5",
+    "qwen2.5-coder",
+    "deepseek-r1",
+    "gemma3",
+    "gemma2",
+    "devstral",
+    "mistral",
+    "phi4",
+]
+
 def _display_relationship_mode(mode: str) -> str:
     from .i18n import get_language
 
@@ -46,6 +90,26 @@ def _display_relationship_mode(mode: str) -> str:
         "girlfriend": {"ko": "연인", "en": "Girlfriend", "ja": "恋人", "zh": "恋人"},
     }
     return mapping.get(mode, {}).get(lang, mode)
+
+
+def _provider_model_choices(provider: str) -> list[str]:
+    if provider == "openai":
+        return list(_OPENAI_MODEL_CHOICES)
+    if provider == "anthropic":
+        return list(_ANTHROPIC_MODEL_CHOICES)
+    if provider == "ollama":
+        return list(_OLLAMA_MODEL_CHOICES)
+    return []
+
+
+def _model_choice_description(provider: str) -> str:
+    if provider == "openai":
+        return "Current official OpenAI text/reasoning models"
+    if provider == "anthropic":
+        return "Current official Anthropic Claude model IDs and aliases"
+    if provider == "ollama":
+        return "Current official Ollama library chat/tool model families"
+    return "Provider model choices"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -304,6 +368,26 @@ def _persist_runtime_settings(args: argparse.Namespace) -> None:
     for key, value in payload.items():
         if key in _RUNTIME_PREF_KEYS:
             set_pref(key, value)
+
+
+def _persist_model_for_provider(provider: str, model: str | None) -> None:
+    from .i18n import get_pref, set_pref
+
+    provider_models = {}
+    saved_provider_models = get_pref("provider_models")
+    if isinstance(saved_provider_models, dict):
+        provider_models = {
+            str(key): str(value)
+            for key, value in saved_provider_models.items()
+            if isinstance(value, str) and value.strip()
+        }
+
+    if model:
+        provider_models[provider] = model
+    else:
+        provider_models.pop(provider, None)
+
+    set_pref("provider_models", provider_models)
 
 
 def _build_saved_runtime_args(parser: argparse.ArgumentParser) -> argparse.Namespace:
@@ -1927,17 +2011,41 @@ def _api_key_guide(console: "Console", args: argparse.Namespace) -> None:  # typ
 
 
 def _set_model_override(console: "Console", args: argparse.Namespace) -> None:  # type: ignore[name-defined]
-    try:
-        from .wide_input import wide_input
-        current = args.model or ""
-        prompt = f"  Model override [{current or 'blank = provider default'}]: "
-        value = wide_input(prompt).strip()
-    except (EOFError, KeyboardInterrupt):
+    from .selector import MenuItem, arrow_select
+
+    choices = _provider_model_choices(args.provider)
+    if not choices:
         return
 
-    args.model = value or None
-    if args.provider == "ollama" and value:
-        os.environ[OLLAMA_MODEL_ENV] = value
+    current = args.model or ""
+    items = [MenuItem("Provider Default", "Use the provider default model", icon="◌")]
+    if current and current not in choices:
+        items.append(MenuItem(f"Keep Current: {current}", "Keep the currently saved custom model", icon="✓"))
+    items.extend(
+        MenuItem(model_name, _model_choice_description(args.provider), icon="🧠")
+        for model_name in choices
+    )
+    items.append(MenuItem("Back", "Return to Settings", icon="←"))
+
+    choice = arrow_select(
+        console,
+        items,
+        title=f"Select {args.provider} model",
+        border_style="bright_magenta",
+    )
+    if choice is None or choice == len(items) - 1:
+        return
+
+    if choice == 0:
+        args.model = None
+    elif current and current not in choices and choice == 1:
+        args.model = current
+    else:
+        offset = 2 if current and current not in choices else 1
+        args.model = choices[choice - offset]
+
+    if args.provider == "ollama" and args.model:
+        os.environ[OLLAMA_MODEL_ENV] = args.model
     _persist_runtime_settings(args)
     console.print(
         f"  [green]Model -> {args.model or 'provider default'}[/green]\n"
@@ -1945,22 +2053,27 @@ def _set_model_override(console: "Console", args: argparse.Namespace) -> None:  
 
 
 def _set_ollama_model(console: "Console", args: argparse.Namespace) -> None:  # type: ignore[name-defined]
-    current = os.environ.get(OLLAMA_MODEL_ENV, args.model or "")
-    try:
-        from .wide_input import wide_input
-        model = wide_input(
-            f"  Ollama model [{current or 'llama3.2'}]: "
-        ).strip()
-    except (EOFError, KeyboardInterrupt):
+    from .selector import MenuItem, arrow_select
+
+    choices = _provider_model_choices("ollama")
+    items = [MenuItem(model_name, _model_choice_description("ollama"), icon="🦙") for model_name in choices]
+    items.append(MenuItem("Back", "Return to API Settings", icon="←"))
+
+    choice = arrow_select(
+        console,
+        items,
+        title="Select ollama model",
+        border_style="bright_yellow",
+    )
+    if choice is None or choice == len(items) - 1:
         return
 
-    if not model:
-        model = "llama3.2"
-
-    args.model = model
+    model = choices[choice]
     os.environ[OLLAMA_MODEL_ENV] = model
     saved = _save_key_to_shell_profile(OLLAMA_MODEL_ENV, model)
-    _persist_runtime_settings(args)
+    _persist_model_for_provider("ollama", model)
+    if args.provider == "ollama":
+        args.model = model
     console.print(f"  [green]Ollama model -> {model}[/green]")
     if saved:
         console.print("  [green]Saved to your shell profile.[/green]\n")

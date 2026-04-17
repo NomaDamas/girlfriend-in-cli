@@ -520,6 +520,50 @@ def test_build_persona_generator_config_falls_back_to_openai_for_ollama(
     assert config.ollama_base_url is None
 
 
+def test_provider_model_choices_include_latest_official_entries() -> None:
+    assert "gpt-5.2" in cli._provider_model_choices("openai")
+    assert "gpt-5.2-pro" in cli._provider_model_choices("openai")
+    assert "claude-opus-4-1-20250805" in cli._provider_model_choices("anthropic")
+    assert "claude-3-5-haiku-latest" in cli._provider_model_choices("anthropic")
+    assert "llama4" in cli._provider_model_choices("ollama")
+    assert "qwen3" in cli._provider_model_choices("ollama")
+
+
+def test_set_model_override_uses_menu_selection(monkeypatch, tmp_path: Path) -> None:
+    prefs_path = tmp_path / "prefs.json"
+    monkeypatch.setattr(i18n, "_PREFS_PATH", prefs_path)
+    args = cli.build_parser().parse_args(["--provider", "openai"])
+
+    monkeypatch.setattr(
+        "girlfriend_generator.selector.arrow_select",
+        lambda *_args, **_kwargs: 1,
+    )
+
+    from rich.console import Console
+    cli._set_model_override(Console(record=True, width=120), args)
+
+    assert args.model == "gpt-5.2"
+
+
+def test_set_ollama_model_uses_curated_choices(monkeypatch, tmp_path: Path) -> None:
+    prefs_path = tmp_path / "prefs.json"
+    monkeypatch.setattr(i18n, "_PREFS_PATH", prefs_path)
+    args = cli.build_parser().parse_args(["--provider", "openai"])
+
+    monkeypatch.setattr(
+        "girlfriend_generator.selector.arrow_select",
+        lambda *_args, **_kwargs: 2,
+    )
+    monkeypatch.setattr(cli, "_save_key_to_shell_profile", lambda *_args, **_kwargs: False)
+
+    from rich.console import Console
+    cli._set_ollama_model(Console(record=True, width=120), args)
+
+    assert args.model is None
+    data = prefs_path.read_text(encoding="utf-8")
+    assert '"provider_models": {"ollama": "llama3.2"}' in data
+
+
 def test_build_persona_generator_config_keeps_anthropic_when_selected() -> None:
     args = cli.build_parser().parse_args(["--provider", "anthropic", "--model", "claude-test"])
 

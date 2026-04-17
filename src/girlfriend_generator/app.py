@@ -29,6 +29,7 @@ from .session_io import export_session, load_session_snapshot
 from .music import build_music_player
 from .scenes import (
     SceneState, Scene, load_scenes, available_scenes,
+    conversation_supports_scene_change,
     build_evaluator_prompt, build_report_prompt,
     parse_evaluator_response, parse_report_response, render_report_card,
 )
@@ -494,7 +495,15 @@ def run_chat_app(config: AppConfig) -> int:
                     # Scene evaluator: check after every user message
                     if outcome.get("sent") and all_scenes and not scene_state.pending_proposal:
                         scene_state.record_user_message()
-                        if scene_state.should_evaluate() and pending_job is None:
+                        if (
+                            scene_state.should_evaluate()
+                            and pending_job is None
+                            and conversation_supports_scene_change(
+                                session.recent_history(),
+                                session.affection_score,
+                                session.mood.current,
+                            )
+                        ):
                             avail = available_scenes(
                                 all_scenes, session.affection_score,
                                 scene_state.current_scene.name if scene_state.current_scene else "",
@@ -1573,7 +1582,20 @@ def _handle_command(
         }
     if lowered == "/help":
         session.add_system_message(
-            "Commands: /help /back /quit /strategy /advice /coach /trace /status /affection /export /music /voice on|off /listen"
+            "Commands:\n"
+            "/help — show this help\n"
+            "/back — return to main menu\n"
+            "/quit — close the session\n"
+            "/strategy — open strategy discussion\n"
+            "/advice — post the latest coach summary in chat\n"
+            "/coach — open the full Dating Coach panel with scrolling\n"
+            "/trace — toggle the right-side trace panel\n"
+            "/status — show current session status\n"
+            "/affection — post affection/battle-power report\n"
+            "/export — save the session transcript\n"
+            "/music — toggle mood music\n"
+            "/voice on|off — toggle voice output\n"
+            "/listen — start voice input"
         )
         return {
             "draft": "",

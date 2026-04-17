@@ -11,6 +11,13 @@ from typing import Any
 from .models import ChatMessage, MoodType, Persona
 
 
+_MOVE_SIGNAL_KEYWORDS = (
+    "가자", "갈래", "갈까", "가볼까", "나갈", "밖에", "만날", "데이트", "약속",
+    "카페", "술", "밥", "먹", "산책", "영화", "드라이브", "구경", "놀", "보러",
+    "where", "go", "date", "meet", "cafe", "coffee", "dinner", "walk", "movie",
+)
+
+
 @dataclass(slots=True)
 class Scene:
     name: str
@@ -45,13 +52,17 @@ class SceneState:
     rejection_count: int = 0
     scene_history: list[str] = field(default_factory=list)
     pending_proposal: EvaluatorResult | None = None
-    eval_interval: int = 4
+    eval_interval: int = 6
+    min_messages_before_eval: int = 6
     max_rejections: int = 3
 
     def should_evaluate(self) -> bool:
         if self.rejection_count >= self.max_rejections:
             return False
-        return self.user_msg_count > 0 and self.user_msg_count % self.eval_interval == 0
+        return (
+            self.user_msg_count >= self.min_messages_before_eval
+            and self.user_msg_count % self.eval_interval == 0
+        )
 
     def record_user_message(self) -> None:
         self.user_msg_count += 1
@@ -113,6 +124,23 @@ def available_scenes(
     ]
 
 
+def conversation_supports_scene_change(
+    recent_messages: list[ChatMessage],
+    affection: int,
+    mood: MoodType,
+) -> bool:
+    recent_text = " ".join(
+        message.text.lower()
+        for message in recent_messages[-8:]
+        if message.role != "system"
+    )
+    if any(keyword in recent_text for keyword in _MOVE_SIGNAL_KEYWORDS):
+        return True
+    if affection >= 82 and mood in {"flirty", "excited"} and len(recent_messages) >= 10:
+        return True
+    return False
+
+
 def build_evaluator_prompt(
     persona: Persona,
     current_scene: Scene | None,
@@ -140,9 +168,12 @@ def build_evaluator_prompt(
         "Respond with ONLY valid JSON (no markdown, no explanation):\n"
         '{"should_move": true/false, "next_scene": "장소이름", "proposal_line": "자연스러운 제안 대사"}\n\n'
         "Rules:\n"
-        "- should_move=true if the conversation reached a natural pause, topic shift, emotional upswing, or a clear chance to invite the user somewhere\n"
-        "- when affection is high or the mood is flirty/excited/playful, be more proactive about suggesting a move\n"
-        "- proposal_line must sound like the persona naturally suggesting to go somewhere\n"
+        "- should_move=true ONLY if the move feels earned by the ongoing conversation\n"
+        "- never jump scenes randomly or without a conversational bridge\n"
+        "- prefer staying put if the conversation is still developing or emotionally unresolved\n"
+        "- moving is appropriate when there is a natural pause, explicit date/invitation/logistics topic, or a very clear next-step opportunity\n"
+        "- high affection and flirty/excited mood may help, but are not enough by themselves if the proposal would still feel abrupt\n"
+        "- proposal_line must reference the current flow so the suggestion feels like a natural continuation of the conversation\n"
         "- If should_move=false, set next_scene and proposal_line to empty strings\n"
     )
 

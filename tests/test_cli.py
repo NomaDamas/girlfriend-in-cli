@@ -521,10 +521,10 @@ def test_build_persona_generator_config_falls_back_to_openai_for_ollama(
 
 
 def test_provider_model_choices_include_latest_official_entries() -> None:
-    assert "gpt-5.2" in cli._provider_model_choices("openai")
-    assert "gpt-5.2-pro" in cli._provider_model_choices("openai")
+    assert "gpt-5.4" in cli._provider_model_choices("openai")
+    assert "gpt-5.4-mini" in cli._provider_model_choices("openai")
     assert "claude-opus-4-1-20250805" in cli._provider_model_choices("anthropic")
-    assert "claude-3-5-haiku-latest" in cli._provider_model_choices("anthropic")
+    assert "claude-sonnet-4-0" in cli._provider_model_choices("anthropic")
     assert "llama4" in cli._provider_model_choices("ollama")
     assert "qwen3" in cli._provider_model_choices("ollama")
 
@@ -550,7 +550,7 @@ def test_set_model_override_uses_menu_selection(monkeypatch, tmp_path: Path) -> 
     from rich.console import Console
     cli._set_model_override(Console(record=True, width=120), args)
 
-    assert args.model == "gpt-5.2"
+    assert args.model == "gpt-5.4"
 
 
 def test_set_ollama_model_uses_curated_choices(monkeypatch, tmp_path: Path) -> None:

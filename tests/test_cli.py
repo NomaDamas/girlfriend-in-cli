@@ -309,7 +309,7 @@ def test_build_logo_rows_keeps_title_swappable() -> None:
     plain_rows = [row.plain for row in rows]
 
     assert any("♡ terminal romance simulator ♡" in row for row in plain_rows)
-    assert any("v0.1.4" in row for row in plain_rows)
+    assert any("v0.1.4.1" in row for row in plain_rows)
 
 
 def test_build_main_menu_actions_includes_guide_entry(monkeypatch) -> None:

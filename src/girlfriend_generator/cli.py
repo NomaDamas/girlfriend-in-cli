@@ -47,7 +47,7 @@ _OPENAI_MODEL_CHOICES = [
 
 _ANTHROPIC_MODEL_CHOICES = [
     "claude-opus-4-7",
-    "claude-sonnet-4-5",
+    "claude-sonnet-4-6",
     "claude-haiku-4-5",
 ]
 

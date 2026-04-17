@@ -525,7 +525,7 @@ def test_provider_model_choices_include_latest_official_entries() -> None:
     assert "gpt-5.4-pro" in cli._provider_model_choices("openai")
     assert "gpt-5.4-mini" in cli._provider_model_choices("openai")
     assert "claude-opus-4-7" in cli._provider_model_choices("anthropic")
-    assert "claude-sonnet-4-5" in cli._provider_model_choices("anthropic")
+    assert "claude-sonnet-4-6" in cli._provider_model_choices("anthropic")
     assert "claude-haiku-4-5" in cli._provider_model_choices("anthropic")
     assert "llama4" in cli._provider_model_choices("ollama")
     assert "qwen3" in cli._provider_model_choices("ollama")

@@ -229,27 +229,36 @@ _STRINGS = {
 _PREFS_PATH = Path.home() / ".girlfriend-in-cli" / "prefs.json"
 
 
-def get_language() -> str:
+def _read_prefs() -> dict:
     try:
         data = json.loads(_PREFS_PATH.read_text(encoding="utf-8"))
-        lang = data.get("language", "en")
-        if lang in _STRINGS:
-            return lang
+        return data if isinstance(data, dict) else {}
     except Exception:
-        pass
+        return {}
+
+
+def get_pref(key: str, default: object = None) -> object:
+    return _read_prefs().get(key, default)
+
+
+def set_pref(key: str, value: object) -> None:
+    _PREFS_PATH.parent.mkdir(parents=True, exist_ok=True)
+    data = _read_prefs()
+    data[key] = value
+    _PREFS_PATH.write_text(json.dumps(data), encoding="utf-8")
+
+
+def get_language() -> str:
+    lang = str(get_pref("language", "en"))
+    if lang in _STRINGS:
+        return lang
     return "en"
 
 
 def set_language(lang: str) -> None:
     if lang not in _STRINGS:
         return
-    _PREFS_PATH.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        data = json.loads(_PREFS_PATH.read_text(encoding="utf-8"))
-    except Exception:
-        data = {}
-    data["language"] = lang
-    _PREFS_PATH.write_text(json.dumps(data), encoding="utf-8")
+    set_pref("language", lang)
 
 
 def t(key: str, lang: str | None = None) -> str:

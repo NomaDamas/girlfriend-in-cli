@@ -4,6 +4,12 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT_DIR"
 
+if ! command -v uv >/dev/null 2>&1; then
+  echo "uv is required to capture verification evidence. Install it first: brew install uv" >&2
+  echo "Docs: https://docs.astral.sh/uv/getting-started/installation/" >&2
+  exit 1
+fi
+
 EVIDENCE_DIR="${1:-$ROOT_DIR/artifacts/ouroboros/latest}"
 rm -rf "$EVIDENCE_DIR"
 mkdir -p "$EVIDENCE_DIR"
@@ -16,24 +22,10 @@ rm -rf "$tmpdir"
 mkdir -p "$tmpdir"
 trap 'rm -rf "$tmpdir"' EXIT
 
-python3 -m venv --system-site-packages "$tmpdir/venv"
+uv venv "$tmpdir/venv" >"$EVIDENCE_DIR/install.txt" 2>&1
 source "$tmpdir/venv/bin/activate"
-
-if python - <<'PY' >/dev/null 2>&1
-import importlib.util
-raise SystemExit(0 if importlib.util.find_spec("wheel") else 1)
-PY
-then
-  if python -m pip install --no-build-isolation -e . >"$EVIDENCE_DIR/install.txt" 2>&1; then
-    INSTALL_MODE="pip editable runtime install (--no-build-isolation)"
-  else
-    python setup.py develop >"$EVIDENCE_DIR/install.txt" 2>&1
-    INSTALL_MODE="setuptools develop fallback"
-  fi
-else
-  python setup.py develop >"$EVIDENCE_DIR/install.txt" 2>&1
-  INSTALL_MODE="setuptools develop (offline-safe default)"
-fi
+uv pip install -e ".[dev]" >>"$EVIDENCE_DIR/install.txt" 2>&1
+INSTALL_MODE="uv venv + uv pip editable install"
 
 cd "$tmpdir"
 girlfriend-generator --help >"$EVIDENCE_DIR/help.txt" 2>&1
@@ -178,7 +170,7 @@ cat >"$EVIDENCE_DIR/claim-map.md" <<EOF
 
 ## AC1 Package install and run
 
-- Command: \`bash scripts/bootstrap.sh\`
+- Command: \`uv sync --extra dev\`
 - Evidence: install mode recorded in \`install.txt\`
 - Entrypoint evidence:
   - \`help.txt\`

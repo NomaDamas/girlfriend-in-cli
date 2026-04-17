@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -23,6 +24,48 @@ from .updater import maybe_prompt_for_update
 from .version import __version__
 
 
+OLLAMA_BASE_URL_ENV = "GIRLFRIEND_GENERATOR_OLLAMA_BASE_URL"
+OLLAMA_MODEL_ENV = "GIRLFRIEND_GENERATOR_OLLAMA_MODEL"
+DEFAULT_OLLAMA_BASE_URL = "http://127.0.0.1:11434/v1"
+_RUNTIME_PREF_KEYS = {
+    "provider",
+    "provider_model",
+    "provider_models",
+    "ollama_base_url",
+    "performance",
+    "voice_output",
+    "no_trace",
+}
+
+_OPENAI_MODEL_CHOICES = [
+    "gpt-5.4",
+    "gpt-5.4-pro",
+    "gpt-5.4-mini",
+    "gpt-5.4-nano",
+]
+
+_ANTHROPIC_MODEL_CHOICES = [
+    "claude-opus-4-7",
+    "claude-sonnet-4-6",
+    "claude-haiku-4-5",
+]
+
+_OLLAMA_MODEL_CHOICES = [
+    "llama4",
+    "llama3.3",
+    "llama3.2",
+    "llama3.1",
+    "qwen3",
+    "qwen2.5",
+    "qwen2.5-coder",
+    "deepseek-r1",
+    "gemma3",
+    "gemma2",
+    "devstral",
+    "mistral",
+    "phi4",
+]
+
 def _display_relationship_mode(mode: str) -> str:
     from .i18n import get_language
 
@@ -32,6 +75,24 @@ def _display_relationship_mode(mode: str) -> str:
         "girlfriend": {"ko": "연인", "en": "Girlfriend", "ja": "恋人", "zh": "恋人"},
     }
     return mapping.get(mode, {}).get(lang, mode)
+
+
+def _provider_model_choices(provider: str) -> list[str]:
+    if provider == "openai":
+        return list(_OPENAI_MODEL_CHOICES)
+    if provider == "anthropic":
+        return list(_ANTHROPIC_MODEL_CHOICES)
+    return []
+
+
+def _model_choice_description(provider: str) -> str:
+    if provider == "openai":
+        return "Current official OpenAI text/reasoning models"
+    if provider == "anthropic":
+        return "Current official Anthropic Claude model IDs and aliases"
+    if provider == "ollama":
+        return "Enter any Ollama model name manually"
+    return "Provider model choices"
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -45,13 +106,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--provider",
-        choices=["openai", "anthropic", "remote"],
+        choices=["openai", "anthropic", "ollama", "remote"],
         default="openai",
         help="Reply generator backend.",
     )
     parser.add_argument(
         "--model",
         help="Provider-specific model override.",
+    )
+    parser.add_argument(
+        "--ollama-base-url",
+        help="Base URL for the Ollama OpenAI-compatible endpoint (for example http://127.0.0.1:11434/v1).",
     )
     parser.add_argument(
         "--performance",
@@ -160,7 +225,6 @@ def build_parser() -> argparse.ArgumentParser:
 def _has_any_flags(args: argparse.Namespace) -> bool:
     return any([
         args.persona,
-        args.provider not in ("openai",),
         args.list_personas,
         args.list_remote_personas,
         getattr(args, "resume", None),
@@ -171,9 +235,178 @@ def _has_any_flags(args: argparse.Namespace) -> bool:
     ])
 
 
+def _has_explicit_flag(raw_args: list[str], flag_name: str) -> bool:
+    return any(arg == flag_name or arg.startswith(f"{flag_name}=") for arg in raw_args)
+
+
+def _get_saved_model_for_provider(provider: str) -> str | None:
+    from .i18n import get_pref
+
+    saved_models = get_pref("provider_models")
+    if isinstance(saved_models, dict):
+        saved_model = saved_models.get(provider)
+        if isinstance(saved_model, str) and saved_model.strip():
+            return saved_model
+
+    legacy_model = get_pref("provider_model")
+    saved_provider = get_pref("provider")
+    if (
+        isinstance(legacy_model, str)
+        and legacy_model.strip()
+        and saved_provider == provider
+    ):
+        return legacy_model
+    return None
+
+
+def _apply_saved_runtime_settings(
+    args: argparse.Namespace,
+    parser: argparse.ArgumentParser,
+    raw_args: list[str],
+) -> None:
+    from .i18n import get_pref
+
+    provider_default = parser.get_default("provider")
+    if not _has_explicit_flag(raw_args, "--provider") and args.provider == provider_default:
+        saved_provider = get_pref("provider")
+        if saved_provider in {"openai", "anthropic", "ollama", "remote"}:
+            args.provider = str(saved_provider)
+
+    if not _has_explicit_flag(raw_args, "--model") and getattr(args, "model", None) is None:
+        saved_model = _get_saved_model_for_provider(args.provider)
+        if saved_model:
+            args.model = saved_model
+
+    if (
+        not _has_explicit_flag(raw_args, "--ollama-base-url")
+        and getattr(args, "ollama_base_url", None) is None
+    ):
+        saved_ollama_base_url = get_pref("ollama_base_url")
+        if isinstance(saved_ollama_base_url, str) and saved_ollama_base_url.strip():
+            args.ollama_base_url = saved_ollama_base_url
+
+    if (
+        not _has_explicit_flag(raw_args, "--performance")
+        and args.performance == parser.get_default("performance")
+    ):
+        saved_performance = get_pref("performance")
+        if saved_performance in {"turbo", "balanced", "cinematic"}:
+            args.performance = str(saved_performance)
+
+    if (
+        not _has_explicit_flag(raw_args, "--voice-output")
+        and args.voice_output == parser.get_default("voice_output")
+    ):
+        saved_voice_output = get_pref("voice_output")
+        if isinstance(saved_voice_output, bool):
+            args.voice_output = saved_voice_output
+
+    if (
+        not _has_explicit_flag(raw_args, "--no-trace")
+        and args.no_trace == parser.get_default("no_trace")
+    ):
+        saved_no_trace = get_pref("no_trace")
+        if isinstance(saved_no_trace, bool):
+            args.no_trace = saved_no_trace
+
+
+def _apply_provider_defaults(args: argparse.Namespace) -> None:
+    if args.provider != "ollama":
+        return
+    if not getattr(args, "ollama_base_url", None):
+        args.ollama_base_url = os.environ.get(OLLAMA_BASE_URL_ENV, DEFAULT_OLLAMA_BASE_URL)
+    if not getattr(args, "model", None):
+        saved_model = os.environ.get(OLLAMA_MODEL_ENV)
+        if saved_model:
+            args.model = saved_model
+
+
+def _persist_runtime_settings(args: argparse.Namespace) -> None:
+    from .i18n import set_pref
+
+    provider_models = {}
+    from .i18n import get_pref
+    saved_provider_models = get_pref("provider_models")
+    if isinstance(saved_provider_models, dict):
+        provider_models = {
+            str(key): str(value)
+            for key, value in saved_provider_models.items()
+            if isinstance(value, str) and value.strip()
+        }
+    if args.model:
+        provider_models[args.provider] = args.model
+    else:
+        provider_models.pop(args.provider, None)
+
+    payload = {
+        "provider": args.provider,
+        "provider_model": args.model,
+        "provider_models": provider_models,
+        "ollama_base_url": getattr(args, "ollama_base_url", None),
+        "performance": args.performance,
+        "voice_output": args.voice_output,
+        "no_trace": args.no_trace,
+    }
+
+    for key, value in payload.items():
+        if key in _RUNTIME_PREF_KEYS:
+            set_pref(key, value)
+
+
+def _persist_model_for_provider(provider: str, model: str | None) -> None:
+    from .i18n import get_pref, set_pref
+
+    provider_models = {}
+    saved_provider_models = get_pref("provider_models")
+    if isinstance(saved_provider_models, dict):
+        provider_models = {
+            str(key): str(value)
+            for key, value in saved_provider_models.items()
+            if isinstance(value, str) and value.strip()
+        }
+
+    if model:
+        provider_models[provider] = model
+    else:
+        provider_models.pop(provider, None)
+
+    set_pref("provider_models", provider_models)
+
+
+def _build_saved_runtime_args(parser: argparse.ArgumentParser) -> argparse.Namespace:
+    args = parser.parse_args([])
+    _apply_saved_runtime_settings(args, parser, [])
+    _apply_provider_defaults(args)
+    return args
+
+
+def _build_persona_generator_config(args: argparse.Namespace):
+    from .persona_auto import PersonaGeneratorConfig
+
+    if args.provider in {"openai", "anthropic"}:
+        provider = args.provider
+        model = args.model
+    elif os.environ.get("OPENAI_API_KEY"):
+        provider = "openai"
+        model = _get_saved_model_for_provider("openai")
+    elif os.environ.get("ANTHROPIC_API_KEY"):
+        provider = "anthropic"
+        model = _get_saved_model_for_provider("anthropic")
+    else:
+        provider = "openai"
+        model = _get_saved_model_for_provider("openai")
+    return PersonaGeneratorConfig(
+        provider=provider,
+        model=model,
+    )
+
+
 def main() -> int:
     parser = build_parser()
-    args = parser.parse_args()
+    raw_args = sys.argv[1:]
+    args = parser.parse_args(raw_args)
+    _apply_saved_runtime_settings(args, parser, raw_args)
+    _apply_provider_defaults(args)
     persona_dir = bundled_persona_dir()
     bundled_personas = discover_personas(persona_dir) if persona_dir.exists() else []
 
@@ -208,7 +441,8 @@ def main() -> int:
             # Re-discover personas (user may have created new ones)
             persona_dir = bundled_persona_dir()
             bundled_personas = discover_personas(persona_dir) if persona_dir.exists() else []
-            args = build_parser().parse_args()  # reset args
+            parser = build_parser()
+            args = _build_saved_runtime_args(parser)
 
     persona_override = None
     if args.provider == "remote":
@@ -271,11 +505,13 @@ def _launch_chat(
     persona_override: object | None,
     resume_path: Path | None,
 ) -> int:
+    _apply_provider_defaults(args)
     config = AppConfig(
         persona_path=persona_path,
         persona_override=persona_override,
         provider_name=args.provider,
         provider_model=args.model,
+        ollama_base_url=getattr(args, "ollama_base_url", None),
         server_base_url=args.server_base_url,
         persona_id=args.persona_id or args.persona_slug,
         performance_mode=args.performance,
@@ -556,7 +792,11 @@ def _show_first_run_onboarding(console: "Console", args: argparse.Namespace) -> 
     provider_hint = (
         "OpenAI uses API keys here. ChatGPT login-only OAuth is not available for general API auth."
         if args.provider == "openai"
-        else "Set your provider credentials in Settings before the best experience."
+        else (
+            "Ollama runs locally. Set the Ollama model + endpoint in Settings if you want local inference."
+            if args.provider == "ollama"
+            else "Set your provider credentials in Settings before the best experience."
+        )
     )
 
     body = Text.assemble(
@@ -686,7 +926,7 @@ def _show_main_menu(
 
         if action == "persona_studio":
             console.print()
-            studio_result = _persona_studio(console, bundled_personas)
+            studio_result = _persona_studio(console, bundled_personas, args)
             if studio_result is not None:
                 return args, studio_result, None
             console.clear()
@@ -709,8 +949,6 @@ def _show_main_menu(
 
 
 def _provider_needs_setup(args: argparse.Namespace) -> bool:
-    import os
-
     if args.provider == "openai":
         return not bool(os.environ.get("OPENAI_API_KEY"))
     if args.provider == "anthropic":
@@ -790,6 +1028,17 @@ def _provider_setup_guide(console: "Console", args: argparse.Namespace) -> None:
             ("  Next step:\n", "bold"),
             ("  Settings → API Keys → Anthropic Key\n", "green"),
         )
+    elif provider == "ollama":
+        body = Text.assemble(
+            ("\n  Ollama setup\n\n", "bold bright_cyan"),
+            ("  • This provider uses your ", "white"),
+            ("local Ollama server", "bold yellow"),
+            (".\n", "white"),
+            ("  • No cloud API key is required.\n", "white"),
+            ("  • Make sure Ollama is running and the model is pulled.\n\n", "white"),
+            ("  Next step:\n", "bold"),
+            ("  Settings → API Settings → Ollama model / endpoint\n", "green"),
+        )
     else:
         body = Text.assemble(
             ("\n  This provider does not currently need API login guidance.\n", "white"),
@@ -824,6 +1073,7 @@ def _show_usage_guide(console: "Console", args: argparse.Namespace) -> None:  # 
         ("  • Settings → provider, language, API keys\n", "white"),
         (f"  • {t('usage_keys_openai', lang)}: ", "white"), ("platform.openai.com/api-keys\n", "green"),
         (f"  • {t('usage_keys_anthropic', lang)}: ", "white"), ("console.anthropic.com/settings/keys\n", "green"),
+        ("  • Ollama: run locally, then set model + endpoint in Settings\n", "white"),
         ("  • /advice → see coach feedback during chat\n", "white"),
         ("  • /back → return to the main menu\n\n", "white"),
         ("  Release updates are checked on startup.\n", "dim"),
@@ -853,6 +1103,7 @@ _BUILTIN_PERSONAS = {
 def _persona_studio(
     console: "Console",  # type: ignore[name-defined]
     bundled_personas: list[Path],
+    args: argparse.Namespace,
 ) -> Path | None:
     """Persona studio: create, edit, or delete custom personas."""
     from .selector import MenuItem, arrow_select
@@ -886,7 +1137,7 @@ def _persona_studio(
             return None
 
         if choice == 0:  # Auto Generate
-            result = _auto_generate_persona(console)
+            result = _auto_generate_persona(console, args)
             if result is not None:
                 return result
             continue
@@ -1066,17 +1317,38 @@ def _import_persona(console: "Console") -> Path | None:  # type: ignore[name-def
     return None
 
 
-def _auto_generate_persona(console: "Console") -> Path | None:  # type: ignore[name-defined]
+def _auto_generate_persona(
+    console: "Console",
+    args: argparse.Namespace,
+) -> Path | None:  # type: ignore[name-defined]
     """Auto-generate persona from a name/URL/description using deep research."""
     from rich.panel import Panel
-    from .persona_auto import generate_persona_from_input, save_generated_persona, deep_research_persona
+    from .persona_auto import save_generated_persona, deep_research_persona
     from .wide_input import wide_input, wide_multiline_input
+
+    generator_config = _build_persona_generator_config(args)
+    provider_label = generator_config.provider
+    model_label = generator_config.model or "provider default"
+    if provider_label == "openai":
+        generator_note = "OpenAI keeps live web-search grounding for persona research."
+    else:
+        generator_note = (
+            "Anthropic uses model-based synthesis plus fetched URL text. "
+            "Live web-search grounding currently requires OpenAI."
+        )
+    if args.provider not in {"openai", "anthropic"}:
+        generator_note = (
+            f"Chat is currently set to {args.provider}, but persona generation is routed to "
+            f"{provider_label}. {generator_note}"
+        )
 
     console.clear()
     console.print(Panel(
         "[bold bright_green]🤖 Auto Persona Generator  (Deep Research)[/bold bright_green]\n\n"
         "[dim]Enter anything — a name, URL, or a full multi-line description.[/dim]\n"
         "[dim]Press Enter on an empty line to finish. Deep research will run automatically.[/dim]\n\n"
+        f"[dim]Current generator:[/dim] [cyan]{provider_label}[/cyan] / [magenta]{model_label}[/magenta]\n\n"
+        f"[dim]{generator_note}[/dim]\n\n"
         "[dim]Examples (single-line or multi-line):[/dim]\n"
         "  [cyan]장원영[/cyan]\n"
         "  [cyan]Dua Lipa[/cyan]\n"
@@ -1116,9 +1388,10 @@ def _auto_generate_persona(console: "Console") -> Path | None:  # type: ignore[n
     # Deep research — multi-step with progress
     from rich.live import Live
     from rich.spinner import Spinner
+    research_step = "🌐 Web searching..." if provider_label == "openai" else "🧾 Gathering source text..."
     steps = [
         "🔍 Analyzing input...",
-        "🌐 Web searching...",
+        research_step,
         "📚 Gathering context...",
         "🧠 Synthesizing persona...",
         "✨ Finalizing details...",
@@ -1133,7 +1406,11 @@ def _auto_generate_persona(console: "Console") -> Path | None:  # type: ignore[n
                 if 0 <= step_idx < len(steps):
                     live.update(Spinner("dots", text=f"  {steps[step_idx]}", style="cyan"))
 
-            data = deep_research_persona(input_text.strip(), on_progress=on_progress)
+            data = deep_research_persona(
+                input_text.strip(),
+                on_progress=on_progress,
+                config=generator_config,
+            )
     except Exception as exc:
         console.print(f"  [red]Failed: {exc}[/red]\n")
         try:
@@ -1596,30 +1873,36 @@ def _find_persona_by_name(name: str, personas: list[Path]) -> Path | None:
 
 
 def _settings_menu(console: "Console", args: argparse.Namespace) -> None:  # type: ignore[name-defined]
-    import os
     from .selector import MenuItem, arrow_select
     from .i18n import get_language, set_language
 
-    providers = ["openai", "anthropic"]
+    providers = ["openai", "anthropic", "ollama"]
     perfs = ["turbo", "balanced", "cinematic"]
     languages = ["ko", "en", "ja", "zh"]
     lang_names = {"ko": "한국어", "en": "English", "ja": "日本語", "zh": "中文"}
 
     while True:
+        _apply_provider_defaults(args)
         perf_icon = _PERF_ICONS.get(args.performance, "")
         has_openai = bool(os.environ.get("OPENAI_API_KEY"))
         has_anthropic = bool(os.environ.get("ANTHROPIC_API_KEY"))
         current_lang = get_language()
+        model_label = args.model or ("saved/default" if args.provider == "ollama" else "default")
 
         items = [
             MenuItem(f"Language: {lang_names.get(current_lang, current_lang)}", "UI + chat language", icon="🌍"),
-            MenuItem(f"Provider: {args.provider}", "Cycle openai / anthropic", icon="🔌"),
+            MenuItem(f"Provider: {args.provider}", "Cycle openai / anthropic / ollama", icon="🔌"),
+            MenuItem(f"Model: {model_label}", "Edit provider model override", icon="🧠"),
             MenuItem(f"Performance: {perf_icon} {args.performance}", "Cycle turbo / balanced / cinematic", icon="⚡"),
             MenuItem(f"Voice: {'ON' if args.voice_output else 'OFF'}", "Toggle voice output", icon="🔊"),
             MenuItem(f"Trace: {'ON' if not args.no_trace else 'OFF'}", "Toggle debug trace panel", icon="📊"),
             MenuItem(
-                "API Keys",
-                f"OpenAI: {'set' if has_openai else 'missing'}  |  Anthropic: {'set' if has_anthropic else 'missing'}",
+                "API Settings",
+                (
+                    f"OpenAI: {'set' if has_openai else 'missing'}  |  "
+                    f"Anthropic: {'set' if has_anthropic else 'missing'}  |  "
+                    f"Ollama: {getattr(args, 'ollama_base_url', None) or os.environ.get(OLLAMA_BASE_URL_ENV, DEFAULT_OLLAMA_BASE_URL)}"
+                ),
                 icon="🔑",
             ),
         ]
@@ -1636,31 +1919,38 @@ def _settings_menu(console: "Console", args: argparse.Namespace) -> None:  # typ
         elif choice == 1:  # Provider
             current_idx = providers.index(args.provider) if args.provider in providers else 0
             args.provider = providers[(current_idx + 1) % len(providers)]
+            _apply_provider_defaults(args)
+            _persist_runtime_settings(args)
             console.print(f"  [green]Provider -> {args.provider}[/green]\n")
-        elif choice == 2:  # Performance
+        elif choice == 2:  # Model
+            _set_model_override(console, args)
+        elif choice == 3:  # Performance
             current_idx = perfs.index(args.performance) if args.performance in perfs else 0
             args.performance = perfs[(current_idx + 1) % len(perfs)]
+            _persist_runtime_settings(args)
             console.print(f"  [green]Performance -> {args.performance}[/green]\n")
-        elif choice == 3:  # Voice
+        elif choice == 4:  # Voice
             args.voice_output = not args.voice_output
+            _persist_runtime_settings(args)
             console.print(f"  [green]Voice -> {'ON' if args.voice_output else 'OFF'}[/green]\n")
-        elif choice == 4:  # Trace
+        elif choice == 5:  # Trace
             args.no_trace = not args.no_trace
+            _persist_runtime_settings(args)
             console.print(f"  [green]Trace -> {'ON' if not args.no_trace else 'OFF'}[/green]\n")
-        elif choice == 5:  # API Keys
-            _api_key_guide(console)
+        elif choice == 6:  # API Settings
+            _api_key_guide(console, args)
 
 
-def _api_key_guide(console: "Console") -> None:  # type: ignore[name-defined]
-    import os
+def _api_key_guide(console: "Console", args: argparse.Namespace) -> None:  # type: ignore[name-defined]
     from .selector import MenuItem, arrow_select
 
     while True:
         has_openai = bool(os.environ.get("OPENAI_API_KEY"))
         has_anthropic = bool(os.environ.get("ANTHROPIC_API_KEY"))
-
-        openai_status = "[green]set[/green]" if has_openai else "[red]not set[/red]"
-        anthropic_status = "[green]set[/green]" if has_anthropic else "[red]not set[/red]"
+        ollama_base_url = getattr(args, "ollama_base_url", None) or os.environ.get(
+            OLLAMA_BASE_URL_ENV, DEFAULT_OLLAMA_BASE_URL
+        )
+        ollama_model = os.environ.get(OLLAMA_MODEL_ENV, args.model or "default")
 
         items = [
             MenuItem(
@@ -1672,6 +1962,16 @@ def _api_key_guide(console: "Console") -> None:  # type: ignore[name-defined]
                 f"Anthropic Key  ({('set' if has_anthropic else 'not set')})",
                 "Paste your Anthropic API key here",
                 icon="🔑",
+            ),
+            MenuItem(
+                f"Ollama Model  ({ollama_model})",
+                "Persist the default Ollama model name",
+                icon="🦙",
+            ),
+            MenuItem(
+                f"Ollama Endpoint  ({ollama_base_url})",
+                "Persist the Ollama host/port or full /v1 base URL",
+                icon="🌐",
             ),
         ]
 
@@ -1687,11 +1987,122 @@ def _api_key_guide(console: "Console") -> None:  # type: ignore[name-defined]
             _set_api_key(console, "OPENAI_API_KEY", "OpenAI", "sk-")
         elif choice == 1:
             _set_api_key(console, "ANTHROPIC_API_KEY", "Anthropic", "sk-ant-")
+        elif choice == 2:
+            _set_ollama_model(console, args)
+        elif choice == 3:
+            _set_ollama_base_url(console, args)
+
+
+def _set_model_override(console: "Console", args: argparse.Namespace) -> None:  # type: ignore[name-defined]
+    if args.provider == "ollama":
+        try:
+            from .wide_input import wide_input
+            current = args.model or ""
+            prompt = f"  Ollama model [{current or 'llama3.2'}]: "
+            value = wide_input(prompt).strip()
+        except (EOFError, KeyboardInterrupt):
+            return
+        args.model = value or "llama3.2"
+        os.environ[OLLAMA_MODEL_ENV] = args.model
+        _persist_runtime_settings(args)
+        console.print(
+            f"  [green]Model -> {args.model}[/green]\n"
+        )
+        return
+
+    from .selector import MenuItem, arrow_select
+
+    choices = _provider_model_choices(args.provider)
+    if not choices:
+        return
+
+    current = args.model or ""
+    items = [MenuItem("Provider Default", "Use the provider default model", icon="◌")]
+    if current and current not in choices:
+        items.append(MenuItem(f"Keep Current: {current}", "Keep the currently saved custom model", icon="✓"))
+    items.extend(
+        MenuItem(model_name, _model_choice_description(args.provider), icon="🧠")
+        for model_name in choices
+    )
+    items.append(MenuItem("Back", "Return to Settings", icon="←"))
+
+    choice = arrow_select(
+        console,
+        items,
+        title=f"Select {args.provider} model",
+        border_style="bright_magenta",
+    )
+    if choice is None or choice == len(items) - 1:
+        return
+
+    if choice == 0:
+        args.model = None
+    elif current and current not in choices and choice == 1:
+        args.model = current
+    else:
+        offset = 2 if current and current not in choices else 1
+        args.model = choices[choice - offset]
+
+    if args.provider == "ollama" and args.model:
+        os.environ[OLLAMA_MODEL_ENV] = args.model
+    _persist_runtime_settings(args)
+    console.print(
+        f"  [green]Model -> {args.model or 'provider default'}[/green]\n"
+    )
+
+
+def _set_ollama_model(console: "Console", args: argparse.Namespace) -> None:  # type: ignore[name-defined]
+    current = os.environ.get(OLLAMA_MODEL_ENV, _get_saved_model_for_provider("ollama") or "llama3.2")
+    try:
+        from .wide_input import wide_input
+        model = wide_input(
+            f"  Ollama model [{current}]: "
+        ).strip()
+    except (EOFError, KeyboardInterrupt):
+        return
+
+    if not model:
+        model = current
+
+    os.environ[OLLAMA_MODEL_ENV] = model
+    saved = _save_key_to_shell_profile(OLLAMA_MODEL_ENV, model)
+    _persist_model_for_provider("ollama", model)
+    if args.provider == "ollama":
+        args.model = model
+    console.print(f"  [green]Ollama model -> {model}[/green]")
+    if saved:
+        console.print("  [green]Saved to your shell profile.[/green]\n")
+    else:
+        console.print("  [yellow]Saved for this session only.[/yellow]\n")
+
+
+def _set_ollama_base_url(console: "Console", args: argparse.Namespace) -> None:  # type: ignore[name-defined]
+    current = getattr(args, "ollama_base_url", None) or os.environ.get(
+        OLLAMA_BASE_URL_ENV, DEFAULT_OLLAMA_BASE_URL
+    )
+    try:
+        from .wide_input import wide_input
+        base_url = wide_input(
+            f"  Ollama endpoint [{current}]: "
+        ).strip()
+    except (EOFError, KeyboardInterrupt):
+        return
+
+    if not base_url:
+        base_url = current
+
+    args.ollama_base_url = base_url
+    os.environ[OLLAMA_BASE_URL_ENV] = base_url
+    saved = _save_key_to_shell_profile(OLLAMA_BASE_URL_ENV, base_url)
+    _persist_runtime_settings(args)
+    console.print(f"  [green]Ollama endpoint -> {base_url}[/green]")
+    if saved:
+        console.print("  [green]Saved to your shell profile.[/green]\n")
+    else:
+        console.print("  [yellow]Saved for this session only.[/yellow]\n")
 
 
 def _set_api_key(console: "Console", env_var: str, provider_name: str, prefix: str) -> None:  # type: ignore[name-defined]
-    import os
-
     current = os.environ.get(env_var, "")
     if current:
         masked = current[:8] + "..." + current[-4:]

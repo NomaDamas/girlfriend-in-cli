@@ -2,7 +2,12 @@ import types
 from pathlib import Path
 
 from girlfriend_generator.personas import load_persona
-from girlfriend_generator.providers import AnthropicProvider, OpenAIProvider, HeuristicProvider
+from girlfriend_generator.providers import (
+    AnthropicProvider,
+    HeuristicProvider,
+    OllamaProvider,
+    OpenAIProvider,
+)
 
 
 def _load_test_persona():
@@ -78,6 +83,51 @@ def test_anthropic_provider_uses_saved_language_when_none_is_passed(
 
     assert reply.text == "やあ"
     assert captured["prompt_kwargs"]["language"] == "ja"
+
+
+def test_ollama_provider_uses_openai_compatible_endpoint(monkeypatch) -> None:
+    persona = _load_test_persona()
+    captured = {}
+
+    class _FakeClient:
+        def __init__(self):
+            self.responses = self
+
+        def create(self, **kwargs):
+            captured["create_kwargs"] = kwargs
+            return types.SimpleNamespace(output_text='{"reply":"local hi"}')
+
+    def _fake_openai(**kwargs):
+        captured["client_kwargs"] = kwargs
+        return _FakeClient()
+
+    monkeypatch.setattr(
+        "girlfriend_generator.providers._build_system_prompt",
+        lambda *args, **kwargs: "SYSTEM",
+    )
+    monkeypatch.setattr(
+        "girlfriend_generator.providers.parse_llm_json_response",
+        lambda raw: {"reply": "local hi"},
+    )
+    monkeypatch.setitem(
+        __import__("sys").modules,
+        "openai",
+        types.SimpleNamespace(OpenAI=_fake_openai),
+    )
+
+    provider = OllamaProvider("llama3.2", "127.0.0.1:11434")
+    reply = provider.generate_reply(
+        persona=persona,
+        history=[],
+        user_text="hi",
+        affection_score=55,
+        language="ko",
+    )
+
+    assert reply.text == "local hi"
+    assert captured["client_kwargs"]["base_url"] == "http://127.0.0.1:11434/v1"
+    assert captured["client_kwargs"]["api_key"] == "ollama"
+    assert captured["create_kwargs"]["model"] == "llama3.2"
 
 
 def test_heuristic_provider_respects_non_korean_language() -> None:

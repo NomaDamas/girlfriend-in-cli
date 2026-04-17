@@ -529,6 +529,14 @@ def test_provider_model_choices_include_latest_official_entries() -> None:
     assert "qwen3" in cli._provider_model_choices("ollama")
 
 
+def test_provider_model_choices_include_installed_ollama_models(monkeypatch) -> None:
+    monkeypatch.setattr(cli, "_installed_ollama_models", lambda: ["my-local-model:latest"])
+
+    choices = cli._provider_model_choices("ollama")
+
+    assert "my-local-model:latest" in choices
+
+
 def test_set_model_override_uses_menu_selection(monkeypatch, tmp_path: Path) -> None:
     prefs_path = tmp_path / "prefs.json"
     monkeypatch.setattr(i18n, "_PREFS_PATH", prefs_path)

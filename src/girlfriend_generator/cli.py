@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -98,7 +99,11 @@ def _provider_model_choices(provider: str) -> list[str]:
     if provider == "anthropic":
         return list(_ANTHROPIC_MODEL_CHOICES)
     if provider == "ollama":
-        return list(_OLLAMA_MODEL_CHOICES)
+        models = list(_OLLAMA_MODEL_CHOICES)
+        for installed in _installed_ollama_models():
+            if installed not in models:
+                models.append(installed)
+        return models
     return []
 
 
@@ -108,8 +113,34 @@ def _model_choice_description(provider: str) -> str:
     if provider == "anthropic":
         return "Current official Anthropic Claude model IDs and aliases"
     if provider == "ollama":
-        return "Current official Ollama library chat/tool model families"
+        return "Official current Ollama chat models + any locally installed models"
     return "Provider model choices"
+
+
+def _installed_ollama_models() -> list[str]:
+    try:
+        result = subprocess.run(
+            ["ollama", "list"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=2,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+
+    if result.returncode != 0:
+        return []
+
+    models: list[str] = []
+    for raw_line in result.stdout.splitlines()[1:]:
+        line = raw_line.strip()
+        if not line:
+            continue
+        name = line.split()[0]
+        if name and name not in models:
+            models.append(name)
+    return models
 
 
 def build_parser() -> argparse.ArgumentParser:

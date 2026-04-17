@@ -3,7 +3,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import subprocess
 import sys
 from pathlib import Path
 
@@ -83,12 +82,6 @@ def _provider_model_choices(provider: str) -> list[str]:
         return list(_OPENAI_MODEL_CHOICES)
     if provider == "anthropic":
         return list(_ANTHROPIC_MODEL_CHOICES)
-    if provider == "ollama":
-        models = list(_OLLAMA_MODEL_CHOICES)
-        for installed in _installed_ollama_models():
-            if installed not in models:
-                models.append(installed)
-        return models
     return []
 
 
@@ -98,34 +91,8 @@ def _model_choice_description(provider: str) -> str:
     if provider == "anthropic":
         return "Current official Anthropic Claude model IDs and aliases"
     if provider == "ollama":
-        return "Official current Ollama chat models + any locally installed models"
+        return "Enter any Ollama model name manually"
     return "Provider model choices"
-
-
-def _installed_ollama_models() -> list[str]:
-    try:
-        result = subprocess.run(
-            ["ollama", "list"],
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=2,
-        )
-    except (OSError, subprocess.SubprocessError):
-        return []
-
-    if result.returncode != 0:
-        return []
-
-    models: list[str] = []
-    for raw_line in result.stdout.splitlines()[1:]:
-        line = raw_line.strip()
-        if not line:
-            continue
-        name = line.split()[0]
-        if name and name not in models:
-            models.append(name)
-    return models
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -2027,6 +1994,22 @@ def _api_key_guide(console: "Console", args: argparse.Namespace) -> None:  # typ
 
 
 def _set_model_override(console: "Console", args: argparse.Namespace) -> None:  # type: ignore[name-defined]
+    if args.provider == "ollama":
+        try:
+            from .wide_input import wide_input
+            current = args.model or ""
+            prompt = f"  Ollama model [{current or 'llama3.2'}]: "
+            value = wide_input(prompt).strip()
+        except (EOFError, KeyboardInterrupt):
+            return
+        args.model = value or "llama3.2"
+        os.environ[OLLAMA_MODEL_ENV] = args.model
+        _persist_runtime_settings(args)
+        console.print(
+            f"  [green]Model -> {args.model}[/green]\n"
+        )
+        return
+
     from .selector import MenuItem, arrow_select
 
     choices = _provider_model_choices(args.provider)
@@ -2069,22 +2052,18 @@ def _set_model_override(console: "Console", args: argparse.Namespace) -> None:  
 
 
 def _set_ollama_model(console: "Console", args: argparse.Namespace) -> None:  # type: ignore[name-defined]
-    from .selector import MenuItem, arrow_select
-
-    choices = _provider_model_choices("ollama")
-    items = [MenuItem(model_name, _model_choice_description("ollama"), icon="🦙") for model_name in choices]
-    items.append(MenuItem("Back", "Return to API Settings", icon="←"))
-
-    choice = arrow_select(
-        console,
-        items,
-        title="Select ollama model",
-        border_style="bright_yellow",
-    )
-    if choice is None or choice == len(items) - 1:
+    current = os.environ.get(OLLAMA_MODEL_ENV, _get_saved_model_for_provider("ollama") or "llama3.2")
+    try:
+        from .wide_input import wide_input
+        model = wide_input(
+            f"  Ollama model [{current}]: "
+        ).strip()
+    except (EOFError, KeyboardInterrupt):
         return
 
-    model = choices[choice]
+    if not model:
+        model = current
+
     os.environ[OLLAMA_MODEL_ENV] = model
     saved = _save_key_to_shell_profile(OLLAMA_MODEL_ENV, model)
     _persist_model_for_provider("ollama", model)

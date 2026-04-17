@@ -527,16 +527,7 @@ def test_provider_model_choices_include_latest_official_entries() -> None:
     assert "claude-opus-4-7" in cli._provider_model_choices("anthropic")
     assert "claude-sonnet-4-6" in cli._provider_model_choices("anthropic")
     assert "claude-haiku-4-5" in cli._provider_model_choices("anthropic")
-    assert "llama4" in cli._provider_model_choices("ollama")
-    assert "qwen3" in cli._provider_model_choices("ollama")
-
-
-def test_provider_model_choices_include_installed_ollama_models(monkeypatch) -> None:
-    monkeypatch.setattr(cli, "_installed_ollama_models", lambda: ["my-local-model:latest"])
-
-    choices = cli._provider_model_choices("ollama")
-
-    assert "my-local-model:latest" in choices
+    assert cli._provider_model_choices("ollama") == []
 
 
 def test_set_model_override_uses_menu_selection(monkeypatch, tmp_path: Path) -> None:
@@ -559,11 +550,8 @@ def test_set_ollama_model_uses_curated_choices(monkeypatch, tmp_path: Path) -> N
     prefs_path = tmp_path / "prefs.json"
     monkeypatch.setattr(i18n, "_PREFS_PATH", prefs_path)
     args = cli.build_parser().parse_args(["--provider", "openai"])
-
-    monkeypatch.setattr(
-        "girlfriend_generator.selector.arrow_select",
-        lambda *_args, **_kwargs: 2,
-    )
+    monkeypatch.setenv(cli.OLLAMA_MODEL_ENV, "llama3.2")
+    monkeypatch.setattr("girlfriend_generator.wide_input.wide_input", lambda *_args, **_kwargs: "qwen3")
     monkeypatch.setattr(cli, "_save_key_to_shell_profile", lambda *_args, **_kwargs: False)
 
     from rich.console import Console
@@ -571,7 +559,7 @@ def test_set_ollama_model_uses_curated_choices(monkeypatch, tmp_path: Path) -> N
 
     assert args.model is None
     data = prefs_path.read_text(encoding="utf-8")
-    assert '"provider_models": {"ollama": "llama3.2"}' in data
+    assert '"provider_models": {"ollama": "qwen3"}' in data
 
 
 def test_build_persona_generator_config_keeps_anthropic_when_selected() -> None:

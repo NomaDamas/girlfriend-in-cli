@@ -847,7 +847,22 @@ def _relationship_transition_prompt(persona: Persona, session: ConversationSessi
     )
 
 
-def _evolve_relationship(
+def _localize_relationship_state(provider: Any, persona: Persona, state: RelationshipState) -> RelationshipState:
+    language = get_language()
+    if language == "ko":
+        return state
+    state.summary = _maybe_translate_display_text(provider, persona, state.summary, language)
+    state.guidance = _maybe_translate_display_text(provider, persona, state.guidance, language)
+    state.dynamic_personality = _maybe_translate_display_text(provider, persona, state.dynamic_personality, language)
+    state.situation = _maybe_translate_display_text(provider, persona, state.situation, language)
+    state.nudge_examples = [
+        _maybe_translate_display_text(provider, persona, example, language)
+        for example in state.nudge_examples
+    ]
+    return state
+
+
+def _determine_relationship_state(
     provider: Any,
     persona: Persona,
     session: ConversationSession,
@@ -871,9 +886,23 @@ def _evolve_relationship(
         state = _parse_relationship_transition(reply.text, session, kind)
     except Exception:
         state = _fallback_relationship_state(session, kind)
+    return _localize_relationship_state(provider, persona, state)
+
+
+def _apply_relationship_state(session: ConversationSession, state: RelationshipState) -> None:
     session.apply_relationship_state(state)
-    _localize_session_display_state(provider, persona, session)
     session.add_system_message(f"[Relationship Shift] {state.label} — {state.summary}")
+
+
+def _evolve_relationship(
+    provider: Any,
+    persona: Persona,
+    session: ConversationSession,
+    kind: str,
+) -> RelationshipState:
+    state = _determine_relationship_state(provider, persona, session, kind)
+    _apply_relationship_state(session, state)
+    _localize_session_display_state(provider, persona, session)
     return state
 
 
@@ -1064,6 +1093,17 @@ def _show_ending(
 
     color = "red" if kind == "game_over" else "bright_green"
     boundary_title = t("game_over") if kind == "game_over" else t("success")
+    transition_kind = "success" if kind == "success" else "failure"
+    from rich.live import Live as RichLive
+    from rich.spinner import Spinner
+
+    with RichLive(
+        Spinner("dots", text="  다음 관계를 정리하는 중...", style="cyan"),
+        console=console,
+        refresh_per_second=12,
+    ):
+        next_state = _determine_relationship_state(provider, persona, session, transition_kind)
+
     console.print()
     console.print(Align.center(Panel(
         Text.assemble(
@@ -1073,6 +1113,12 @@ def _show_ending(
             (f"{_localized_relationship_label(session.current_relationship_label)}\n", f"bold {persona.accent_color}"),
             ("  ", ""),
             (f"{session.current_relationship_summary}\n", "white"),
+            ("\n  Next relationship:  ", "bold"),
+            (f"{_localized_relationship_label(next_state.label)}\n", f"bold {color}"),
+            ("  ", ""),
+            (f"{next_state.summary}\n", "white"),
+            ("\n  Situation after ending:  ", "bold"),
+            (f"{next_state.situation}\n", "dim"),
             ("\n  ", ""),
             (t("ending_continue_prompt"), "dim"),
             ("\n", ""),
@@ -1093,10 +1139,10 @@ def _show_ending(
         return "back"
 
     if action == "continue_silent":
-        state = _evolve_relationship(provider, persona, session, "success" if kind == "success" else "failure")
+        _apply_relationship_state(session, next_state)
         session.continue_after_ending(kind)
         session.add_system_message(
-            f"[새 관계] {_localized_relationship_label(state.label)} — {state.summary}\n[상황] {state.situation}"
+            f"[새 관계] {_localized_relationship_label(next_state.label)} — {next_state.summary}\n[상황] {next_state.situation}"
         )
         if hasattr(live, "start"):
             live.start(refresh=True)
@@ -1123,9 +1169,6 @@ def _show_ending(
     )
     try:
         from .i18n import get_language
-        from rich.live import Live as RichLive
-        from rich.spinner import Spinner
-
         with RichLive(
             Spinner("dots", text="  엔딩 리포트를 정리하는 중...", style="cyan"),
             console=console,
@@ -1158,7 +1201,7 @@ def _show_ending(
             "what_went_wrong": "",
             "rating": "?",
         }
-    next_state = _evolve_relationship(provider, persona, session, "success" if kind == "success" else "failure")
+    _apply_relationship_state(session, next_state)
     session.continue_after_ending(kind)
     console.clear()
     title = data.get("report_title", "END")

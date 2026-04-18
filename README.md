@@ -34,12 +34,14 @@ https://github.com/user-attachments/assets/1126916c-6cdb-4e92-bfd6-53f6cf35ea15
 - [🛠️ What it does](#️-what-it-does)
 - [🧭 The philosophy](#-the-philosophy)
 - [🚀 Quick Start](#-quick-start)
+- [📝 Release Notes](#-release-notes)
 - [🎮 First run](#-first-run)
 - [🧠 Build your own persona harness](#-build-your-own-persona-harness)
 - [⌨️ Example commands](#️-example-commands)
 - [🌐 Remote mode](#-remote-mode)
 - [🎛️ In-app controls](#️-in-app-controls)
 - [🗂️ Sessions and export](#️-sessions-and-export)
+- [🤝 Contributing](#-contributing)
 - [✅ Verification](#-verification)
 - [🧩 Local-only ECC setup](#-local-only-ecc-setup)
 - [⚖️ License](#️-license)
@@ -159,7 +161,7 @@ That gives you:
 - ✅ the `girlfriend-in-cli` entrypoint
 - ✅ bundled persona discovery
 
-If you prefer to enter the virtualenv manually:
+If you prefer activating the environment manually:
 
 ```bash
 source .venv/bin/activate
@@ -187,6 +189,32 @@ On startup, the app can check the latest **stable GitHub Release** and prompt be
 - ✅ supports safe upgrade flows for release installs
 - ✅ updates the Homebrew tap formula automatically on release publish
 - ✅ designed to protect users from unstable in-between pushes
+
+---
+
+## 📝 Release Notes
+
+Recent release line:
+
+- `v0.1.4.1` — current stable release
+
+Release pages:
+
+- GitHub Releases: [github.com/NomaDamas/girlfriend-in-cli/releases](https://github.com/NomaDamas/girlfriend-in-cli/releases)
+
+If you want the latest packaged version:
+
+```bash
+brew tap NomaDamas/girlfriend-in-cli https://github.com/NomaDamas/brew-girlfriend-in-cli.git
+brew upgrade girlfriend-in-cli
+```
+
+If you install from source, pull latest `main` and resync:
+
+```bash
+git pull origin main
+uv sync --extra dev
+```
 
 ---
 
@@ -388,6 +416,31 @@ That makes it easy to:
 
 ---
 
+## 🤝 Contributing
+
+This repo is open to fork-and-PR contributions.
+
+Typical flow:
+
+1. Fork the repo
+2. Create a branch from `main`
+3. Make a focused change
+4. Run tests
+5. Open a PR
+
+Start here:
+
+- [CONTRIBUTING.md](CONTRIBUTING.md)
+
+Good contribution targets:
+
+- terminal UX polish
+- persona tuning
+- provider integrations
+- docs and release workflow improvements
+
+---
+
 ## ✅ Verification
 
 Run the test suite:
@@ -425,9 +478,6 @@ It uses:
 It does **not** modify global Codex defaults or your `~/.codex` setup unless you explicitly choose to do that yourself.
 
 ---
-
----
-
 ## ⚖️ License
 
 This project is licensed under **Elastic License 2.0**.

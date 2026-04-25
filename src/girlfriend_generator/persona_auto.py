@@ -109,8 +109,8 @@ def _fetch_url_content(url: str) -> str:
 
 def _resolve_persona_model(config: PersonaGeneratorConfig) -> str:
     defaults = {
-        "openai": "gpt-4.1-mini",
-        "anthropic": "claude-3-7-sonnet-latest",
+        "openai": "gpt-5.4-mini",
+        "anthropic": "claude-haiku-4-5",
     }
     return config.model or defaults.get(config.provider, defaults["openai"])
 
@@ -193,7 +193,7 @@ def _web_search_context(
 
 def generate_persona_from_input(
     input_text: str,
-    model: str = "gpt-4.1-mini",
+    model: str = "gpt-5.4-mini",
     config: PersonaGeneratorConfig | None = None,
 ) -> dict[str, Any]:
     """Call LLM to generate persona JSON from a name, URL, or description.
@@ -265,7 +265,7 @@ def generate_persona_from_input(
 def deep_research_persona(
     input_text: str,
     on_progress: Any = None,
-    model: str = "gpt-4.1-mini",
+    model: str = "gpt-5.4-mini",
     config: PersonaGeneratorConfig | None = None,
 ) -> dict[str, Any]:
     """Multi-step deep research persona generation with progress callbacks.

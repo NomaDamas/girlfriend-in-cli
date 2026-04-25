@@ -62,8 +62,8 @@ class ConversationSession:
     relationship_state: RelationshipState = field(init=False)
     relationship_history: list[str] = field(default_factory=list)
     proactive_due_at: datetime | None = None  # LLM-decided proactive message time
-    strategy_uses_this_scene: int = 0  # /strategy discussions used in current scene
-    max_strategy_per_scene: int = 3
+    strategy_uses_this_session: int = 0
+    max_strategy_per_session: int = 3
     boundary_cooldown: bool = False
 
     def __post_init__(self) -> None:

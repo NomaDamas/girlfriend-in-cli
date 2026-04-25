@@ -1,7 +1,0 @@
-{
-  "name": "집 앞",
-  "description": "집 앞에 도착했다. 헤어지기 아쉬운 분위기.",
-  "mood_hint": "emotional",
-  "bgm_mood": "worried",
-  "min_affection": 60
-}

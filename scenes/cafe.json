@@ -1,7 +1,0 @@
-{
-  "name": "카페",
-  "description": "아늑한 카페에서 마주 앉아 커피를 마시며 이야기를 나누는 중",
-  "mood_hint": "casual",
-  "bgm_mood": "neutral",
-  "min_affection": 0
-}

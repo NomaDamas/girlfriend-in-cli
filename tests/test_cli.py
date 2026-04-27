@@ -309,7 +309,7 @@ def test_build_logo_rows_keeps_title_swappable() -> None:
     plain_rows = [row.plain for row in rows]
 
     assert any("♡ terminal romance simulator ♡" in row for row in plain_rows)
-    assert any("v0.1.4.1" in row for row in plain_rows)
+    assert any("v0.1.5.0" in row for row in plain_rows)
 
 
 def test_build_main_menu_actions_includes_guide_entry(monkeypatch) -> None:
@@ -471,7 +471,7 @@ def test_apply_saved_runtime_settings_restores_model_for_active_provider_only(
     prefs_path.write_text(
         (
             '{"provider":"ollama","provider_model":"legacy-ollama",'
-            '"provider_models":{"ollama":"gemma4:26b","openai":"gpt-4.1-mini"}}'
+            '"provider_models":{"ollama":"gemma4:26b","openai":"gpt-5.4-mini"}}'
         ),
         encoding="utf-8",
     )
@@ -491,7 +491,7 @@ def test_apply_saved_runtime_settings_uses_provider_specific_model_for_saved_pro
 ) -> None:
     prefs_path = tmp_path / "prefs.json"
     prefs_path.write_text(
-        '{"provider":"ollama","provider_models":{"ollama":"gemma4:26b","openai":"gpt-4.1-mini"}}',
+        '{"provider":"ollama","provider_models":{"ollama":"gemma4:26b","openai":"gpt-5.4-mini"}}',
         encoding="utf-8",
     )
     monkeypatch.setattr(i18n, "_PREFS_PATH", prefs_path)
@@ -577,7 +577,7 @@ def test_build_persona_generator_config_falls_back_to_anthropic_when_openai_is_u
 ) -> None:
     prefs_path = tmp_path / "prefs.json"
     prefs_path.write_text(
-        '{"provider_models":{"anthropic":"claude-3-7-sonnet-latest"}}',
+        '{"provider_models":{"anthropic":"claude-haiku-4-5"}}',
         encoding="utf-8",
     )
     monkeypatch.setattr(i18n, "_PREFS_PATH", prefs_path)
@@ -588,7 +588,7 @@ def test_build_persona_generator_config_falls_back_to_anthropic_when_openai_is_u
     config = cli._build_persona_generator_config(args)
 
     assert config.provider == "anthropic"
-    assert config.model == "claude-3-7-sonnet-latest"
+    assert config.model == "claude-haiku-4-5"
 
 
 def test_persist_runtime_settings_keeps_models_scoped_per_provider(
@@ -600,7 +600,7 @@ def test_persist_runtime_settings_keeps_models_scoped_per_provider(
 
     openai_args = cli.build_parser().parse_args([])
     openai_args.provider = "openai"
-    openai_args.model = "gpt-4.1-mini"
+    openai_args.model = "gpt-5.4-mini"
     cli._persist_runtime_settings(openai_args)
 
     ollama_args = cli.build_parser().parse_args(["--provider", "ollama"])
@@ -610,7 +610,7 @@ def test_persist_runtime_settings_keeps_models_scoped_per_provider(
     cli._persist_runtime_settings(ollama_args)
 
     data = prefs_path.read_text(encoding="utf-8")
-    assert '"provider_models": {"openai": "gpt-4.1-mini", "ollama": "gemma4:26b"}' in data
+    assert '"provider_models": {"openai": "gpt-5.4-mini", "ollama": "gemma4:26b"}' in data
 
 
 def test_default_language_is_english(monkeypatch, tmp_path: Path) -> None:

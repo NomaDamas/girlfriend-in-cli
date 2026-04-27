@@ -27,12 +27,6 @@ from .personas import load_persona
 from .providers import ProviderConfig, build_provider
 from .session_io import export_session, load_session_snapshot
 from .music import build_music_player
-from .scenes import (
-    SceneState, Scene, load_scenes, available_scenes,
-    conversation_supports_scene_change,
-    build_evaluator_prompt, build_report_prompt,
-    parse_evaluator_response, parse_report_response, render_report_card,
-)
 from .voice import build_voice_input, build_voice_output
 
 
@@ -64,7 +58,6 @@ class PendingDelivery:
     trace_note: str
     typing_starts_at: float | None = None  # when to show "typing..." indicator
     burst_queue: list[str] = field(default_factory=list)  # follow-up burst messages
-    propose_scene: str = ""  # LLM-proposed scene change
 
 
 class BackgroundJob:
@@ -249,10 +242,6 @@ def run_chat_app(config: AppConfig) -> int:
     last_render_key: tuple[Any, ...] | None = None
     scroll_offset = 0  # 0 = latest messages, positive = scrolled up
     voice_output_enabled = config.voice_output and voice_output.name != "off"
-    all_scenes = load_scenes()
-    scene_state = SceneState()
-    if all_scenes:
-        scene_state.current_scene = all_scenes[0]  # Start at cafe
 
     try:
         with RawKeyboard() as keyboard, Live(
@@ -425,110 +414,12 @@ def run_chat_app(config: AppConfig) -> int:
                     # Strategy discussion
                     if outcome.get("strategy"):
                         _show_strategy_discussion(
-                            live, console, persona, session, provider, scene_state,
+                            live, console, persona, session, provider,
                         )
                         last_render_key = None
                     if outcome.get("coach_full"):
                         _show_full_coach_panel(live, console, session)
                         last_render_key = None
-                    # Scene: handle pending proposal acceptance/rejection
-                    if outcome.get("sent") and scene_state.pending_proposal:
-                        user_text = session.messages[-1].text if session.messages else ""
-                        lower_text = user_text.lower()
-                        accept_words = ("좋아", "가자", "ㅇㅇ", "응", "그래", "오케이", "ok", "ㅇ", "가요", "가볼까")
-                        reject_words = ("싫어", "아니", "ㄴㄴ", "안가", "여기", "별로", "아직")
-                        if any(w in lower_text for w in accept_words):
-                            # Find the scene
-                            target = None
-                            for s in all_scenes:
-                                if s.name == scene_state.pending_proposal.next_scene:
-                                    target = s
-                                    break
-                            if target:
-                                # Generate report card
-                                try:
-                                    report_prompt = build_report_prompt(
-                                        persona, scene_state.current_scene or target,
-                                        target, session.messages,
-                                        session.affection_score, session.mood.current,
-                                        language=get_language(),
-                                    )
-                                    report_reply = provider.generate_reply(
-                                        persona, [], report_prompt,
-                                        session.affection_score, session.mood.current,
-                                        language=get_language(),
-                                        **session.prompt_context(),
-                                    )
-                                    report = parse_report_response(
-                                        report_reply.text,
-                                        session.affection_score, session.mood.current,
-                                        target,
-                                    )
-                                except Exception:
-                                    from .scenes import ReportCard
-                                    report = ReportCard(
-                                        highlights=["(요약 생성 중 오류)"],
-                                        advice="자연스럽게 대화를 이어가보세요.",
-                                        scene_summary="",
-                                        affection=session.affection_score,
-                                        mood=session.mood.current,
-                                        next_scene_name=target.name,
-                                        next_scene_desc=target.description,
-                                    )
-                                # Show report card as system message
-                                session.add_system_message(render_report_card(report))
-                                # Transition
-                                scene_state.accept_transition(target)
-                                session.strategy_uses_this_scene = 0  # reset per scene
-                                session.apply_affection_delta(5, user_text, source="scene_accept")
-                                session.mood.shift(target.mood_hint)
-                                # Clear messages for new scene, keep summary
-                                if report.scene_summary:
-                                    session.messages.clear()
-                                    session.add_system_message(f"[이전 장소 요약] {report.scene_summary}")
-                                    session.add_system_message(f"[현재 장소] {target.name} — {target.description}")
-                        elif any(w in lower_text for w in reject_words):
-                            scene_state.reject_transition()
-                            session.apply_affection_delta(-2, user_text, source="scene_reject")
-                        # else: ambiguous response, keep proposal pending
-
-                    # Scene evaluator: check after every user message
-                    if outcome.get("sent") and all_scenes and not scene_state.pending_proposal:
-                        scene_state.record_user_message()
-                        if (
-                            scene_state.should_evaluate()
-                            and pending_job is None
-                            and conversation_supports_scene_change(
-                                session.recent_history(),
-                                session.affection_score,
-                                session.mood.current,
-                            )
-                        ):
-                            avail = available_scenes(
-                                all_scenes, session.affection_score,
-                                scene_state.current_scene.name if scene_state.current_scene else "",
-                            )
-                            if avail:
-                                eval_prompt = build_evaluator_prompt(
-                                    persona, scene_state.current_scene,
-                                    session.affection_score, session.mood.current,
-                                    session.recent_history(), avail,
-                                    language=get_language(),
-                                )
-                                try:
-                                    eval_reply = provider.generate_reply(
-                                        persona, session.recent_history(),
-                                        eval_prompt, session.affection_score,
-                                        session.mood.current,
-                                        language=get_language(),
-                                        **session.prompt_context(),
-                                    )
-                                    result = parse_evaluator_response(eval_reply.text)
-                                    if result.should_move and result.proposal_line:
-                                        scene_state.pending_proposal = result
-                                        session.add_assistant_message(result.proposal_line)
-                                except Exception:
-                                    pass  # evaluator failure is non-fatal
                     status_line = outcome["status_line"]
                     pending_job = outcome["pending_job"]
                     show_trace = outcome["show_trace"]
@@ -602,11 +493,10 @@ def _show_strategy_discussion(
     persona: Persona,
     session: ConversationSession,
     provider: Any,
-    scene_state: Any,
 ) -> None:
     """Pause chat, show strategic LLM discussion in a full-screen card.
 
-    Limited to 3 uses per scene. The LLM acts as a dating strategist
+    Limited to 3 uses per session. The LLM acts as a dating strategist
     analyzing the current state and suggesting specific next moves.
     """
     from rich.align import Align
@@ -615,16 +505,14 @@ def _show_strategy_discussion(
     from rich.console import Group as RichGroup
     from .wide_input import wide_input
 
-    # Check usage limit
-    if session.strategy_uses_this_scene >= session.max_strategy_per_scene:
+    if session.strategy_uses_this_session >= session.max_strategy_per_session:
         live.stop()
         console.clear()
         console.print()
         console.print(Align.center(Panel(
             Text.assemble(
-                ("\n  Strategy cards exhausted for this scene.\n", "bold yellow"),
-                (f"  You used all {session.max_strategy_per_scene} discussions.\n", "white"),
-                ("\n  Move to a new scene via /move to refresh.\n", "dim"),
+                ("\n  Strategy cards exhausted for this session.\n", "bold yellow"),
+                (f"  You used all {session.max_strategy_per_session} discussions.\n", "white"),
             ),
             title="[bold yellow]⚠ Limit reached[/bold yellow]",
             border_style="yellow",
@@ -690,8 +578,8 @@ def _show_strategy_discussion(
                 "avoid": [],
             }
 
-    session.strategy_uses_this_scene += 1
-    uses_left = session.max_strategy_per_scene - session.strategy_uses_this_scene
+    session.strategy_uses_this_session += 1
+    uses_left = session.max_strategy_per_session - session.strategy_uses_this_session
 
     console.clear()
     console.print()
@@ -721,8 +609,8 @@ def _show_strategy_discussion(
             rows.append(Text.assemble(("    ✗ ", "red"), (a, "dim red")))
     rows.append(Text(""))
     rows.append(Text.assemble(
-        (f"  Strategy cards used: {session.strategy_uses_this_scene}/{session.max_strategy_per_scene}  ", "dim"),
-        (f"({uses_left} left this scene)", "dim italic"),
+        (f"  Strategy cards used: {session.strategy_uses_this_session}/{session.max_strategy_per_session}  ", "dim"),
+        (f"({uses_left} left this session)", "dim italic"),
     ))
     rows.append(Text(""))
 
@@ -1358,7 +1246,6 @@ def _finish_job(
             typing_starts_at=now + seen_delay,
             trace_note=reply.trace_note + trace_extra,
             burst_queue=reply.burst_messages if reply.should_burst else [],
-            propose_scene=reply.propose_scene,
         )
         return None, delivery, "답장을 준비 중이에요."
 
@@ -1556,19 +1443,6 @@ def _handle_command(
             "show_trace": show_trace,
             "voice_output_enabled": voice_output_enabled,
             "quit": True,
-        }
-    if lowered == "/move":
-        session.add_system_message(
-            "Use /move in the main loop (handled separately)."
-        )
-        return {
-            "draft": "",
-            "status_line": "Opening scene selector...",
-            "pending_job": pending_job,
-            "show_trace": show_trace,
-            "voice_output_enabled": voice_output_enabled,
-            "quit": False,
-            "move": True,
         }
     if lowered == "/back":
         return {

@@ -6,7 +6,7 @@ Thanks for contributing to `girlfriend-in-cli`.
 
 - Fix bugs in the terminal chat UX
 - Improve personas under `personas/`
-- Add tests for chat, scene, export, and provider flows
+- Add tests for chat, export, and provider flows
 - Improve docs, setup, and release tooling
 
 ## Development Setup

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "girlfriend-in-cli"
-version = "0.1.4.1"
+version = "0.1.5.0"
 description = "Girlfriend in CLI — terminal romance simulator for vibe coding breaks."
 readme = "README.md"
 license = {file = "LICENSE"}

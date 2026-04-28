@@ -197,7 +197,8 @@ On startup, the app can check the latest **stable GitHub Release** and prompt be
 
 Recent release line:
 
-- `v0.1.5.0` — current stable release. AI-companion repositioning + deprecated model cleanup. See [RELEASE_NOTES_v0.1.5.0.md](RELEASE_NOTES_v0.1.5.0.md).
+- `v0.1.6.0` — current stable release. Adds optional persona-initiated photo sending via `--photos`. See [RELEASE_NOTES_v0.1.6.0.md](RELEASE_NOTES_v0.1.6.0.md).
+- `v0.1.5.0` — AI-companion repositioning + deprecated model cleanup. See [RELEASE_NOTES_v0.1.5.0.md](RELEASE_NOTES_v0.1.5.0.md).
 - `v0.1.4.1` — previous stable release
 
 Release pages:

@@ -27,6 +27,7 @@ from .personas import load_persona
 from .providers import ProviderConfig, build_provider
 from .session_io import export_session, load_session_snapshot
 from .music import build_music_player
+from .photo import PhotoState, generate_photo, open_in_default_app, render_photo_message
 from .voice import build_voice_input, build_voice_output
 
 
@@ -42,6 +43,8 @@ class AppConfig:
     performance_mode: str = "turbo"
     voice_output: bool = False
     voice_input_command: str | None = None
+    photos_enabled: bool = False
+    photos_auto_open: bool = True
     show_trace: bool = True
     input_poll_active_seconds: float = 0.03
     input_poll_idle_seconds: float = 0.08
@@ -58,6 +61,7 @@ class PendingDelivery:
     trace_note: str
     typing_starts_at: float | None = None  # when to show "typing..." indicator
     burst_queue: list[str] = field(default_factory=list)  # follow-up burst messages
+    photo_prompt: str = ""  # if set, generate a photo after delivery (opt-in via --photos)
 
 
 class BackgroundJob:
@@ -180,6 +184,34 @@ def _drain_pending_stdin() -> None:
 
 
 
+def _spawn_photo_job(
+    *,
+    prompt: str,
+    persona: Persona,
+    session: ConversationSession,
+    photo_state: PhotoState,
+) -> None:
+    """Run image generation in a fire-and-forget thread; emit a system message on result."""
+    photo_state.sent_count += 1
+    out_dir = photo_state.session_photos_dir or Path("sessions/photos")
+
+    def _runner() -> None:
+        try:
+            path = generate_photo(prompt, persona.name, out_dir)
+        except Exception as exc:
+            session.add_system_message(f"📷 사진 생성 실패: {exc}")
+            photo_state.sent_count = max(0, photo_state.sent_count - 1)
+            return
+        session.add_system_message(
+            render_photo_message(path, prompt, photo_state.remaining())
+        )
+        if photo_state.auto_open:
+            open_in_default_app(path)
+
+    thread = threading.Thread(target=_runner, daemon=True)
+    thread.start()
+
+
 def run_chat_app(config: AppConfig) -> int:
     console = Console()
     if not _supports_interactive_chat():
@@ -242,6 +274,11 @@ def run_chat_app(config: AppConfig) -> int:
     last_render_key: tuple[Any, ...] | None = None
     scroll_offset = 0  # 0 = latest messages, positive = scrolled up
     voice_output_enabled = config.voice_output and voice_output.name != "off"
+    photo_state = PhotoState(
+        enabled=config.photos_enabled and config.provider_name == "openai",
+        session_photos_dir=config.session_dir / "photos",
+        auto_open=config.photos_auto_open,
+    )
 
     try:
         with RawKeyboard() as keyboard, Live(
@@ -291,6 +328,18 @@ def run_chat_app(config: AppConfig) -> int:
                     status_line = _friendly_activity_status(pending_delivery.kind)
                     if voice_output_enabled:
                         voice_output.speak(delivered_text)
+                    # Photo: persona attached an image to this reply
+                    if (
+                        pending_delivery.photo_prompt
+                        and photo_state.can_send()
+                        and pending_delivery.kind == "reply"
+                    ):
+                        _spawn_photo_job(
+                            prompt=pending_delivery.photo_prompt,
+                            persona=persona,
+                            session=session,
+                            photo_state=photo_state,
+                        )
                     # Handle burst follow-ups: queue them as additional deliveries
                     if pending_delivery.burst_queue:
                         next_text = pending_delivery.burst_queue[0]
@@ -408,6 +457,7 @@ def run_chat_app(config: AppConfig) -> int:
                         voice_output_enabled=voice_output_enabled,
                         show_trace=show_trace, session_dir=config.session_dir,
                         music_player=music_player,
+                        photo_state=photo_state,
                     )
                     draft = outcome["draft"]
                     scroll_offset = 0 if outcome.get("sent") else scroll_offset
@@ -1246,6 +1296,7 @@ def _finish_job(
             typing_starts_at=now + seen_delay,
             trace_note=reply.trace_note + trace_extra,
             burst_queue=reply.burst_messages if reply.should_burst else [],
+            photo_prompt=reply.photo_prompt,
         )
         return None, delivery, "답장을 준비 중이에요."
 
@@ -1266,6 +1317,7 @@ def _handle_key(
     show_trace: bool,
     session_dir: Path,
     music_player: Any = None,
+    photo_state: PhotoState | None = None,
 ) -> dict[str, Any]:
     # Scroll: arrow keys when draft is empty, also [ and ]
     is_scroll_up = key in ("\x1b[A", "\x1b[5~", "[")
@@ -1367,6 +1419,8 @@ def _handle_key(
         memory = "; ".join(session.memory_notes[-5:])
         from .i18n import get_language
         lang = get_language()
+        photos_enabled = bool(photo_state and photo_state.can_send())
+        photos_remaining = photo_state.remaining() if photo_state else 0
         job = BackgroundJob(
             "reply",
             lambda: provider.generate_reply(
@@ -1377,6 +1431,8 @@ def _handle_key(
                 difficulty=persona.difficulty,
                 language=lang,
                 special_mode=persona.special_mode,
+                photos_enabled=photos_enabled,
+                photos_remaining=photos_remaining,
                 **session.prompt_context(),
             ),
         )

@@ -143,6 +143,7 @@ class ProviderReply:
     should_burst: bool = False
     burst_messages: list[str] = field(default_factory=list)
     next_proactive_seconds: int | None = None
+    photo_prompt: str = ""
 
 
 @dataclass(slots=True)

@@ -90,6 +90,7 @@ It can also become a place to practice:
 - 🔎 Can auto-generate personas from a **name, link, or short prompt**
 - 🌐 Supports remote persona compilation and hosting workflows
 - 📊 Exposes a live ECC trace/debug panel during runs
+- 📷 Optional persona-initiated photo sending via `--photos` (OpenAI image gen, capped at 5 per session)
 
 ---
 

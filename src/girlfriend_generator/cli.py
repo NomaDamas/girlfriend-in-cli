@@ -134,6 +134,20 @@ def build_parser() -> argparse.ArgumentParser:
         help="Command that prints a voice transcript to stdout.",
     )
     parser.add_argument(
+        "--photos",
+        action="store_true",
+        help=(
+            "Allow the persona to autonomously send photos via OpenAI image generation. "
+            "Off by default (image API costs apply). Capped at 5 photos per session. "
+            "OpenAI provider only."
+        ),
+    )
+    parser.add_argument(
+        "--photos-no-open",
+        action="store_true",
+        help="With --photos, skip auto-opening images in the OS default viewer.",
+    )
+    parser.add_argument(
         "--server-base-url",
         help="Base URL for the remote persona/runtime server.",
     )
@@ -517,6 +531,8 @@ def _launch_chat(
         performance_mode=args.performance,
         voice_output=args.voice_output,
         voice_input_command=args.voice_input_command,
+        photos_enabled=args.photos,
+        photos_auto_open=not args.photos_no_open,
         session_dir=resolve_session_dir(args.session_dir),
         export_on_exit=not args.no_export_on_exit,
         show_trace=not args.no_trace,

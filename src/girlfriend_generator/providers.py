@@ -319,6 +319,8 @@ class OpenAIProvider:
                                 core_personality=str(kwargs.get("core_personality", "")),
                                 current_situation=str(kwargs.get("current_situation", "")),
                                 nudge_examples=list(kwargs.get("nudge_examples", []) or []),
+                                photos_enabled=bool(kwargs.get("photos_enabled", False)),
+                                photos_remaining=int(kwargs.get("photos_remaining", 0) or 0),
                             ),
                         }
                     ],
@@ -368,6 +370,7 @@ class OpenAIProvider:
             should_burst=bool(parsed.get("should_burst", False)),
             burst_messages=burst_list,
             next_proactive_seconds=proactive_s,
+            photo_prompt=str(parsed.get("photo_prompt") or ""),
         )
 
     def generate_initiative(
@@ -466,6 +469,8 @@ class AnthropicProvider:
                 core_personality=str(kwargs.get("core_personality", "")),
                 current_situation=str(kwargs.get("current_situation", "")),
                 nudge_examples=list(kwargs.get("nudge_examples", []) or []),
+                photos_enabled=bool(kwargs.get("photos_enabled", False)),
+                photos_remaining=int(kwargs.get("photos_remaining", 0) or 0),
             ),
             messages=[
                 {
@@ -500,6 +505,7 @@ class AnthropicProvider:
             coach_charm_point=str(parsed.get("user_charm_point", "")),
             coach_charm_type=str(parsed.get("user_charm_type", "")),
             coach_charm_feedback=str(parsed.get("user_charm_feedback", "")),
+            photo_prompt=str(parsed.get("photo_prompt") or ""),
         )
 
     def generate_initiative(
@@ -624,6 +630,8 @@ def _build_system_prompt(
     core_personality: str = "",
     current_situation: str = "",
     nudge_examples: list[str] | None = None,
+    photos_enabled: bool = False,
+    photos_remaining: int = 0,
 ) -> str:
     time_ctx = ""
     if current_time:
@@ -744,7 +752,19 @@ def _build_system_prompt(
         '  "next_proactive_seconds": integer OR null — if you want to proactively send ANOTHER '
         "message later without waiting for user (e.g. '아 맞다 한 가지 더', '나 방금 이거 생각났어'), "
         "set to 30-600. null = wait for user response normally.\n"
-        "}\n\n"
+        + (
+            (
+                '  ,"photo_prompt": string OR null — IF and only if it would feel natural for '
+                "this persona to send a phone photo right now (selfie / what they are looking at / "
+                "something they want to show off / a meme they took). Write a short visual "
+                "description (English or Korean, 1 sentence, no people identifiable by real name). "
+                "Otherwise null. Use sparingly — 사진은 가끔만, 흐름이 자연스러울 때만. "
+                f"You have {photos_remaining} photos left this session.\n"
+            )
+            if photos_enabled
+            else ""
+        )
+        + "}\n\n"
         f"Your identity: {persona.name}, {persona.age}세, {relationship_label or persona.relationship_mode}.\n"
         f"Background: {persona.background}\n"
         f"Texting style: {persona.texting_style}\n"

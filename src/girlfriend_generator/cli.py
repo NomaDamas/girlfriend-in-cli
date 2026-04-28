@@ -97,7 +97,7 @@ def _model_choice_description(provider: str) -> str:
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Terminal-only romance simulation chat for vibe coding breaks."
+        description="Terminal-native romance simulator. Pick a character, say hi."
     )
     parser.add_argument(
         "--persona",
@@ -823,7 +823,7 @@ def _show_first_run_onboarding(console: "Console", args: argparse.Namespace) -> 
         ("  2. Open ", "white"),
         ("Settings", "bold green"),
         (" to configure your provider.\n", "white"),
-        ("  3. Start chatting and train charm in the terminal.\n\n", "white"),
+        ("  3. Pick a persona and just say hi.\n\n", "white"),
         (f"  {provider_hint}\n", "dim"),
         ("  Tip: use ", "white"),
         ("mygf", "bold magenta"),

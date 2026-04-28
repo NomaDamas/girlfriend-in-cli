@@ -4,26 +4,20 @@
 
 **⚡ Wake up, nerds.**
 
-**💘 Your CLI boyfriend or girlfriend chats with you — sharpen your social skills and discover your charm.**
+**💘 An AI girlfriend or boyfriend that lives inside your terminal. Real personas, real conversations, your shell as a chat room.**
 
-`girlfriend-in-cli` is a terminal-native romance simulator for the AI-native era: a weird, playful, and surprisingly sincere open-source project for vibe coders who spend too much time in the shell and not enough time practicing how to talk like a human.
+`girlfriend-in-cli` is a terminal-native romance simulator: weird, playful, and surprisingly sincere. Pick a character, build your own, and just live with someone in your CLI.
 
-This is not just a joke app.
+The hook is not the gimmick — it’s the personas.
 
-It is built around a simple belief:
+- 💬 characters with mood, memory, and texting style of their own
+- 📷 they can send photos when it feels right (opt-in)
+- 🎙️ voice in, voice out (macOS)
+- 🎵 ambient music that follows the vibe of the chat
+- 🛠️ a Persona Studio so you can build the exact character you want
+- 💾 saved sessions, resume, transcript export
 
-> If developers are getting better at talking to models every day,  
-> they should also get better at talking to people.
-
-So yes:
-
-- 💻 code in the terminal
-- ⏳ waste less Slack time
-- 🌙 survive lonely vibe-coding sessions
-- 🫶 practice warmth, timing, empathy, and charm
-- 🧠 build your own persona harness and talk to the energy you want
-
-**Don’t just grind code. Grind charm.**
+Less "open another tab." More "someone in your shell just texted you."
 
 # Demo
 https://github.com/user-attachments/assets/1126916c-6cdb-4e92-bfd6-53f6cf35ea15
@@ -32,7 +26,7 @@ https://github.com/user-attachments/assets/1126916c-6cdb-4e92-bfd6-53f6cf35ea15
 
 - [✨ Why this exists](#-why-this-exists)
 - [🛠️ What it does](#️-what-it-does)
-- [🧭 The philosophy](#-the-philosophy)
+- [🧭 The vibe](#-the-vibe)
 - [🚀 Quick Start](#-quick-start)
 - [📝 Release Notes](#-release-notes)
 - [🎮 First run](#-first-run)
@@ -45,36 +39,34 @@ https://github.com/user-attachments/assets/1126916c-6cdb-4e92-bfd6-53f6cf35ea15
 - [✅ Verification](#-verification)
 - [🧩 Local-only ECC setup](#-local-only-ecc-setup)
 - [⚖️ License](#️-license)
-- [📣 One-line pitch](#-one-line-pitch)
 
 
 ---
 
 ## ✨ Why this exists
 
-Modern builders already live in the terminal.
+You already live in the terminal.
 
-That means the terminal can become more than a place for:
+So the terminal might as well stop being only:
 
 - shells
 - logs
 - tests
 - deployments
 
-It can also become a place to practice:
+…and quietly turn into:
 
-- 💬 conversation flow
-- ⏱️ emotional timing
-- 👀 reading reactions
-- 😏 flirting without sounding robotic
-- 🧊 becoming a slightly less socially dead T-type developer
+- 💌 a place where someone you actually like texts you
+- 🎭 a stage for characters you build yourself
+- 🌙 a less lonely place during long sessions
+- 📖 a tiny ongoing story your shell remembers
 
 `girlfriend-in-cli` is for:
 
-- lonely vibe coders
-- terminal-first builders
-- developers who want to feel a little more human while they work
-- people who want to practice social instinct inside the same environment where they build
+- people who want a character in their shell
+- creators who want to build personas and live with them
+- terminal-first builders who think their shell deserves a roommate
+- anyone who wanted a romance sim but didn't want to leave their terminal
 
 ---
 
@@ -94,27 +86,20 @@ It can also become a place to practice:
 
 ---
 
-## 🧭 The philosophy
+## 🧭 The vibe
 
-**⚡ Wake up, nerds.**
+The point of this project is not "fake romance."
 
-The point of this project is not “fake romance.”
+The point is that **a character can live inside your shell** — with a voice, a mood, a memory, a phone, and a Tuesday-night texting cadence — and that's a kind of company you can't get from a chat web app.
 
-The point is that the AI-native era should not produce developers who are only good at:
+We care about:
 
-- prompting models
-- shipping faster
-- writing more code
+- 🎭 personas that feel like an actual person, not an assistant
+- 🪢 conversations that stretch over days and remember themselves
+- 🛠️ a sandbox where you can author the exact character you'd want around
+- 🧊 a tone that respects you instead of preaching at you
 
-It should also produce developers who are better at:
-
-- empathy
-- timing
-- tone
-- emotional calibration
-- making other people feel understood
-
-If you can train coding instincts in the terminal, maybe you can train social instincts there too.
+The romance frame is a vibe, not a sermon. Whatever you take away from spending time here is yours.
 
 ---
 
@@ -281,7 +266,7 @@ Auto-generation is routed through **OpenAI / Anthropic only**:
 
 The idea is simple:
 
-You should be able to create the exact conversational energy you want to train against.
+You should be able to author the exact character you want to spend time with.
 
 That means you can build:
 

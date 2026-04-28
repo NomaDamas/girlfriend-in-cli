@@ -50,7 +50,7 @@ def build_formula(tag: str, sha256: str) -> str:
   end
 
   test do
-    assert_match "romance simulation", shell_output("#{{bin}}/mygf --help")
+    assert_match "romance simulator", shell_output("#{{bin}}/mygf --help")
   end
 end
 """

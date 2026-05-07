@@ -4,7 +4,16 @@ import hashlib
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
-from .models import ChatMessage, MoodState, MoodType, Persona, RelationshipState, TickResult
+from .models import (
+    ChatMessage,
+    DifficultSituationState,
+    DifficultSituationTemplate,
+    MoodState,
+    MoodType,
+    Persona,
+    RelationshipState,
+    TickResult,
+)
 from .i18n import get_language
 
 _CHARM_TYPE_EMOJI = {
@@ -28,6 +37,81 @@ _BATTLE_METRICS = [
     ("Responsiveness", "reacting with timing and engagement"),
     ("Consistency", "steady tone and follow-through"),
 ]
+
+_DEFAULT_DIFFICULT_SITUATIONS: tuple[DifficultSituationTemplate, ...] = (
+    DifficultSituationTemplate(
+        id="late_reply_sulking",
+        title="답장 늦은 거 삐짐",
+        opening_line="나 기다린 거 알면서 이제 답장하는 거야?",
+        mood="sulky",
+        trigger_keywords=["늦었", "늦게", "바빠서", "깜빡", "답장 못", "답 늦"],
+        recovery_keywords=["미안", "기다렸", "불안", "먼저 말", "신경"],
+        failure_keywords=["별거", "됐어", "귀찮", "왜 그래", "오바"],
+        start_affection_delta=-5,
+        recovery_affection_delta=9,
+        failure_affection_delta=-11,
+        prompt_guidance="They are hurt by delayed replies. Stay guarded until the user acknowledges the delay and repairs it.",
+    ),
+    DifficultSituationTemplate(
+        id="jealous_other_person",
+        title="다른 사람 얘기 꺼냈을 때 질투",
+        opening_line="지금 내 앞에서 다른 사람 얘기를 그렇게 편하게 하는 거야?",
+        mood="sulky",
+        trigger_keywords=["다른 여자", "다른 남자", "여사친", "남사친", "동기랑", "소개팅", "전여친", "전남친"],
+        recovery_keywords=["미안", "불안", "네 마음", "먼저 말", "질투", "안심", "중요"],
+        failure_keywords=["상관없", "별거", "그냥 친구", "됐어", "귀찮", "오바"],
+        persona_modes=["yandere"],
+        min_user_turns=2,
+        recovery_score_required=2,
+        start_affection_delta=-7,
+        recovery_affection_delta=12,
+        failure_affection_delta=-15,
+        prompt_guidance="They are jealous and need reassurance, not excuses. Do not resolve after one soft apology.",
+    ),
+    DifficultSituationTemplate(
+        id="forgotten_promise",
+        title="약속 잊었을 때",
+        opening_line="그 약속... 진짜 잊고 있었구나.",
+        mood="worried",
+        trigger_keywords=["약속 까먹", "약속 잊", "못 갔", "잊었어", "깜빡했"],
+        recovery_keywords=["미안", "내 잘못", "다시", "보상", "기억", "챙길"],
+        failure_keywords=["별거", "다음에", "됐어", "바빴", "어쩔"],
+        min_user_turns=2,
+        recovery_score_required=2,
+        start_affection_delta=-6,
+        recovery_affection_delta=10,
+        failure_affection_delta=-13,
+        prompt_guidance="They feel deprioritized. The user must take responsibility and offer a concrete repair.",
+    ),
+    DifficultSituationTemplate(
+        id="bad_condition_short",
+        title="컨디션 안 좋은 날",
+        opening_line="오늘은 나도 좀 예민해. 말 예쁘게 해주면 안 돼?",
+        mood="worried",
+        trigger_keywords=["피곤", "아파", "힘들", "컨디션", "예민"],
+        recovery_keywords=["쉬어", "괜찮", "무리", "챙겨", "옆에"],
+        failure_keywords=["나도 힘들", "됐어", "알아서", "징징"],
+        start_affection_delta=-4,
+        recovery_affection_delta=8,
+        failure_affection_delta=-10,
+        prompt_guidance="They are tired and sharp. Reward gentle care; punish making it about the user.",
+    ),
+    DifficultSituationTemplate(
+        id="cold_distance",
+        title="사소한 오해로 생긴 거리감",
+        opening_line="방금 말, 나한텐 좀 차갑게 들렸어.",
+        mood="sulky",
+        trigger_keywords=["몰라", "됐어", "아무거나", "ㅋ", "그래서", "귀찮"],
+        recovery_keywords=["미안", "그 뜻", "상처", "다시 말", "오해"],
+        failure_keywords=["예민", "오바", "됐어", "몰라", "그만"],
+        start_affection_delta=-5,
+        recovery_affection_delta=9,
+        failure_affection_delta=-12,
+        prompt_guidance="They interpreted the user as cold. The user must clarify intent and show warmth.",
+    ),
+)
+
+_DIFFICULT_SITUATION_BY_ID = {template.id: template for template in _DEFAULT_DIFFICULT_SITUATIONS}
 
 
 def utc_now() -> datetime:
@@ -65,6 +149,8 @@ class ConversationSession:
     strategy_uses_this_session: int = 0
     max_strategy_per_session: int = 3
     boundary_cooldown: bool = False
+    difficult_situation: DifficultSituationState | None = None
+    difficult_situation_history: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         self.relationship_state = RelationshipState(
@@ -149,11 +235,18 @@ class ConversationSession:
             "current_situation": self.relationship_state.situation or self.persona.situation,
             "nudge_style": self.relationship_state.nudge_style,
             "nudge_examples": list(self.current_nudge_templates()),
+            "difficult_situation": self.difficult_situation.to_dict()
+            if self.difficult_situation and self.difficult_situation.active
+            else None,
         }
 
     def add_user_message(self, text: str, now: datetime | None = None) -> None:
         now = now or utc_now()
         self.messages.append(ChatMessage(role="user", text=text, created_at=now))
+        if self.difficult_situation and self.difficult_situation.active:
+            self._evaluate_difficult_situation_reply(text)
+        else:
+            self._maybe_start_difficult_situation(text)
         self.awaiting_user_reply = False
         self.nudge_due_at = None
         self.nudge_count = 0
@@ -262,6 +355,123 @@ class ConversationSession:
     def current_nudge_templates(self) -> list[str]:
         return self.relationship_state.nudge_examples or self.persona.nudge_policy.templates
 
+    def active_difficult_situation_prompt(self) -> str:
+        situation = self.difficult_situation
+        if not situation or not situation.active:
+            return ""
+        return (
+            f"Active difficult situation: {situation.title}. "
+            f"Opening line: {situation.opening_line} "
+            f"Repair progress: {situation.repair_score}/{situation.recovery_score_required} "
+            f"over {situation.user_turns}/{situation.min_user_turns} required user turns. "
+            f"{situation.prompt_guidance}"
+        )
+
+    def _maybe_start_difficult_situation(self, text: str) -> None:
+        template = self._select_difficult_situation_template(text)
+        if template is None:
+            return
+        self.difficult_situation = DifficultSituationState(
+            template_id=template.id,
+            title=template.title,
+            opening_line=template.opening_line,
+            mood=template.mood,
+            started_at_turn=sum(1 for message in self.messages if message.role == "user"),
+            min_user_turns=template.min_user_turns,
+            recovery_score_required=template.recovery_score_required,
+            start_affection_delta=template.start_affection_delta,
+            recovery_affection_delta=template.recovery_affection_delta,
+            failure_affection_delta=template.failure_affection_delta,
+            prompt_guidance=template.prompt_guidance,
+        )
+        self.affection_score = self._clamp_affection_score(
+            self.affection_score + template.start_affection_delta
+        )
+        self.mood.shift(template.mood, intensity=0.82)
+        self._update_boundary_gate()
+
+    def _select_difficult_situation_template(self, text: str) -> DifficultSituationTemplate | None:
+        lower = text.lower()
+        available = self._available_difficult_situation_templates()
+        matches = [
+            template
+            for template in available
+            if any(keyword.lower() in lower for keyword in template.trigger_keywords)
+        ]
+        if not matches:
+            return None
+        if self.difficult_situation_history and len(self.messages) < 8:
+            return None
+        return max(matches, key=self._difficult_situation_priority)
+
+    def _available_difficult_situation_templates(self) -> list[DifficultSituationTemplate]:
+        if self.persona.difficult_situation_ids:
+            templates = [
+                _DIFFICULT_SITUATION_BY_ID[situation_id]
+                for situation_id in self.persona.difficult_situation_ids
+                if situation_id in _DIFFICULT_SITUATION_BY_ID
+            ]
+        else:
+            templates = list(_DEFAULT_DIFFICULT_SITUATIONS)
+        special_mode = self.persona.special_mode.lower()
+        return [
+            template
+            for template in templates
+            if not template.persona_modes or special_mode in template.persona_modes
+        ]
+
+    def _difficult_situation_priority(self, template: DifficultSituationTemplate) -> int:
+        if template.persona_modes and self.persona.special_mode.lower() in template.persona_modes:
+            return 3
+        if template.id in self.persona.difficult_situation_ids:
+            return 2
+        return 1
+
+    def _evaluate_difficult_situation_reply(self, text: str) -> None:
+        situation = self.difficult_situation
+        if situation is None or not situation.active:
+            return
+        template = _DIFFICULT_SITUATION_BY_ID.get(situation.template_id)
+        if template is None:
+            return
+        lower = text.lower()
+        situation.user_turns += 1
+        if any(keyword.lower() in lower for keyword in template.failure_keywords):
+            self._resolve_difficult_situation("failed", text)
+            return
+        if any(keyword.lower() in lower for keyword in template.recovery_keywords):
+            situation.repair_score += 1
+        if (
+            situation.user_turns >= situation.min_user_turns
+            and situation.repair_score >= situation.recovery_score_required
+        ):
+            self._resolve_difficult_situation("recovered", text)
+
+    def _resolve_difficult_situation(self, outcome: str, text: str) -> None:
+        situation = self.difficult_situation
+        if situation is None:
+            return
+        situation.active = False
+        situation.outcome = outcome
+        if outcome == "recovered":
+            delta = situation.recovery_affection_delta
+            self.mood.shift("happy", intensity=0.65)
+            summary = (
+                f"{situation.title} — recovered: 어떻게 풀었는지: "
+                f"사용자가 사과/안심/구체적 약속으로 {situation.user_turns}턴 만에 풀었다."
+            )
+        else:
+            delta = situation.failure_affection_delta
+            self.mood.shift("sulky", intensity=0.9)
+            summary = (
+                f"{situation.title} — failed: 어떻게 풀었는지: "
+                f"방어적이거나 가볍게 넘겨서 갈등이 더 커졌다. 마지막 말: {text[:40]}"
+            )
+        self.affection_score = self._clamp_affection_score(self.affection_score + delta)
+        situation.resolution_summary = summary
+        self.difficult_situation_history.append(summary)
+        self._update_boundary_gate()
+
     def consume_boundary_trigger(self) -> str | None:
         self._update_boundary_gate()
         low = 1 if self.endless_mode else 0
@@ -290,6 +500,10 @@ class ConversationSession:
                 "nudge_style": self.relationship_state.nudge_style,
                 "nudge_examples": list(self.relationship_state.nudge_examples),
                 "boundary_kind": self.relationship_state.boundary_kind,
+            },
+            "difficult_situations": {
+                "active": self.difficult_situation.to_dict() if self.difficult_situation else None,
+                "history": list(self.difficult_situation_history),
             },
         }
 
@@ -526,6 +740,8 @@ class ConversationSession:
             "Responsiveness": responsiveness,
             "Consistency": consistency,
         }
+        recovered_count = sum("— recovered:" in item for item in self.difficult_situation_history)
+        failed_count = sum("— failed:" in item for item in self.difficult_situation_history)
 
         return {
             "score": score,
@@ -542,6 +758,15 @@ class ConversationSession:
             "battle_power": battle_power,
             "battle_metric_defs": _BATTLE_METRICS,
             "charm_type_emoji": _CHARM_TYPE_EMOJI.get(self.last_coach_charm_type.lower(), "✨") if self.last_coach_charm_type else "✨",
+            "difficult_situation_active": self.difficult_situation.to_dict()
+            if self.difficult_situation and self.difficult_situation.active
+            else None,
+            "difficult_situations_total": len(self.difficult_situation_history),
+            "difficult_situations_recovered": recovered_count,
+            "difficult_situations_failed": failed_count,
+            "difficult_situation_last": self.difficult_situation_history[-1]
+            if self.difficult_situation_history
+            else "",
         }
 
     def _localized_greeting(self) -> str:

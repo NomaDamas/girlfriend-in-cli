@@ -534,6 +534,7 @@ def run_chat_app(config: AppConfig) -> int:
                 persona=persona,
                 messages=session.messages,
                 relationship_state=session.export_state().get("relationship_state"),
+                difficult_situations=session.export_state().get("difficult_situations"),
             )
 
 
@@ -1675,6 +1676,7 @@ def _handle_command(
             persona=session.persona,
             messages=session.messages,
             relationship_state=session.export_state().get("relationship_state"),
+            difficult_situations=session.export_state().get("difficult_situations"),
         )
         session.add_system_message(
             f"Exported session to {json_path} and {markdown_path}"

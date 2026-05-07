@@ -19,3 +19,10 @@ def test_load_persona_validates_adult_and_nudges() -> None:
 
 def test_discover_personas_is_empty_for_missing_directory(tmp_path: Path) -> None:
     assert discover_personas(tmp_path / "missing") == []
+
+
+def test_load_persona_accepts_difficult_situation_overrides() -> None:
+    persona = load_persona(Path("personas/yandere-special.json"))
+
+    assert persona.difficult_situation_ids
+    assert "jealous_other_person" in persona.difficult_situation_ids

@@ -546,14 +546,15 @@ class ConversationSession:
 
     def _localized_greeting(self) -> str:
         language = get_language()
-        if language == "ko":
+        if language == self.persona.language:
             return self.persona.greeting
         mapping = {
             "en": f"hey, it's {self.persona.name}. wanted to text you first",
             "ja": f"ねえ、{self.persona.name}だよ。先に連絡してみた",
             "zh": f"喂，我是{self.persona.name}。我先来找你聊天了",
+            "ko": f"나 {self.persona.name}이야 먼저 톡해봤어",
         }
-        return mapping.get(language, mapping["en"])
+        return mapping.get(language, mapping["ko"])
 
     def tick(self, provider: object, now: datetime | None = None) -> TickResult:
         now = now or utc_now()

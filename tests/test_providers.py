@@ -7,6 +7,8 @@ from girlfriend_generator.providers import (
     HeuristicProvider,
     OllamaProvider,
     OpenAIProvider,
+    _build_system_prompt,
+    parse_llm_json_response,
 )
 
 
@@ -143,3 +145,26 @@ def test_heuristic_provider_respects_non_korean_language() -> None:
     )
 
     assert any(token in reply.text.lower() for token in ["really", "cute", "listening", "attention"])
+
+
+def test_foreign_persona_prompt_requests_original_and_translated_reply() -> None:
+    persona = _load_test_persona()
+    persona.language = "fr"
+
+    prompt = _build_system_prompt(
+        persona=persona,
+        affection_score=50,
+        mood="neutral",
+        language="ko",
+    )
+
+    assert "persona language (fr)" in prompt
+    assert "user language (ko)" in prompt
+    assert '"translated_reply"' in prompt
+
+
+def test_parse_llm_json_response_keeps_translated_reply() -> None:
+    parsed = parse_llm_json_response('{"reply":"bonjour","translated_reply":"안녕"}')
+
+    assert parsed["reply"] == "bonjour"
+    assert parsed["translated_reply"] == "안녕"

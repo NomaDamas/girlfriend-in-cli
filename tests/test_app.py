@@ -9,7 +9,9 @@ from girlfriend_generator.app import (
     _handle_command,
     _handle_key,
     _localized_relationship_label,
+    _read_receipt_marker,
     _render_header,
+    _render_message,
     _render_screen,
     _render_trace,
     _show_full_coach_panel,
@@ -271,6 +273,30 @@ def test_render_trace_shows_charm_feedback() -> None:
     assert "Charm" in rendered
     assert "playful" in rendered
     assert "장난기 있는 리듬감" in rendered
+
+
+def test_read_receipt_marker_progression_renders_expected_states() -> None:
+    assert _read_receipt_marker("sent") == "[grey42]✓[/grey42]"
+    assert _read_receipt_marker("delivered") == "[grey62]✓✓[/grey62]"
+    assert _read_receipt_marker("seen") == "[bright_cyan]✓✓[/bright_cyan]"
+
+
+def test_render_message_uses_double_check_for_delivered_user_messages() -> None:
+    persona = _load_test_persona()
+    session = ConversationSession(persona=persona)
+    session.add_user_message("읽음 체크 테스트")
+    session.mark_last_user_message("delivered")
+
+    rendered = _render_to_text(
+        _render_message(
+            session.messages[-1],
+            width=60,
+            persona_name=persona.name,
+            accent=persona.accent_color,
+        )
+    )
+
+    assert "✓✓" in rendered
 
 
 def test_sync_provider_trace_exposes_remote_metadata() -> None:

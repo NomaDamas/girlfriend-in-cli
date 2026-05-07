@@ -153,13 +153,50 @@ class ConversationSession:
 
     def add_user_message(self, text: str, now: datetime | None = None) -> None:
         now = now or utc_now()
-        self.messages.append(ChatMessage(role="user", text=text, created_at=now))
+        self.messages.append(
+            ChatMessage(role="user", text=text, created_at=now, read_state="sent")
+        )
         self.awaiting_user_reply = False
         self.nudge_due_at = None
         self.nudge_count = 0
         self.schedule_initiative(now)
         # Affection and mood are now judged by LLM, not keywords
         self.last_activity_at = now
+
+    def mark_last_user_message(self, state: str, now: datetime | None = None) -> None:
+        """Advance the latest user message from sent to delivered to seen."""
+        order = {"sent": 0, "delivered": 1, "seen": 2}
+        if state not in order:
+            return
+        for message in reversed(self.messages):
+            if message.role != "user":
+                continue
+            if order[state] > order.get(message.read_state, 0):
+                message.read_state = state  # type: ignore[assignment]
+                if state == "seen" and message.seen_at is None:
+                    message.seen_at = now or utc_now()
+            return
+
+    def seen_delay_seconds(self) -> float:
+        """Persona+mood-aware delay before the message flips to seen."""
+        import random
+
+        warmth = getattr(self.persona.style_profile, "warmth", 0.7)
+        directness = getattr(self.persona.style_profile, "directness", 0.55)
+        base = random.uniform(1.0, 2.5)
+        warmth_pull = (warmth - 0.5) * 1.6
+        direct_pull = (directness - 0.5) * 0.6
+        mood_bias = {
+            "happy": -0.4,
+            "excited": -0.6,
+            "flirty": -0.3,
+            "playful": -0.2,
+            "neutral": 0.0,
+            "worried": 0.4,
+            "sulky": 1.2,
+        }.get(self.mood.current, 0.0)
+        delay = base - warmth_pull - direct_pull + mood_bias
+        return max(0.4, min(delay, 6.0))
 
     def add_assistant_message(
         self,

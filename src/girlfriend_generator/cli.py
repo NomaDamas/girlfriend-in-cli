@@ -979,9 +979,25 @@ def _build_main_menu_actions(
 ) -> list[tuple[str, "MenuItem"]]:  # type: ignore[name-defined]
     from .i18n import t
     from .selector import MenuItem
+    from . import companion_state
+
+    cleared_count = len(companion_state.load_cleared())
+    if cleared_count:
+        random_chat_item = MenuItem(
+            f"{t('random_chat', lang)} ✓",
+            t("random_chat_desc_unlocked", lang).format(count=cleared_count),
+            icon="🎲",
+        )
+    else:
+        random_chat_item = MenuItem(
+            f"{t('random_chat', lang)} 🔒",
+            t("random_chat_desc_locked", lang),
+            icon="🔒",
+        )
     actions: list[tuple[str, MenuItem]] = [
         ("new_chat", MenuItem(t("new_chat", lang), t("new_chat_desc", lang), icon="💬")),
         ("chat_rooms", MenuItem(f"{t('chat_rooms', lang)} ({room_count})", t("chat_rooms_desc", lang), icon="💌")),
+        ("random_chat", random_chat_item),
         ("persona_studio", MenuItem(t("persona_studio", lang), t("persona_studio_desc", lang), icon="✨")),
         ("guide", MenuItem(t("guide", lang), t("guide_desc", lang), icon="📚")),
         ("settings", MenuItem(t("settings", lang), t("settings_desc", lang), icon="⚙️")),

@@ -1370,6 +1370,7 @@ def _auto_generate_persona(
         "  [cyan]장원영[/cyan]\n"
         "  [cyan]Dua Lipa[/cyan]\n"
         "  [cyan]Reze from Chainsaw Man[/cyan]\n"
+        "  [cyan]https://www.youtube.com/watch?v=dQw4w9WgXcQ[/cyan]\n"
         "  [cyan]https://namu.wiki/w/아이유[/cyan]\n"
         "  [cyan]차가운 도시 여자 26살 변호사[/cyan]\n\n"
         "[dim]Or describe in detail (multi-line):[/dim]\n"

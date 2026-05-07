@@ -204,8 +204,18 @@ def generate_persona_from_input(
 
     # Gather research context
     research_context = ""
+    try:
+        from .youtube_ingest import YouTubeIngestInput, build_youtube_persona_context, is_youtube_url
+    except Exception:
+        is_youtube_url = lambda _value: False  # type: ignore[assignment]
+        build_youtube_persona_context = None  # type: ignore[assignment]
+        YouTubeIngestInput = None  # type: ignore[assignment]
+
     if _looks_like_url(input_text):
-        research_context = _fetch_url_content(input_text)
+        if is_youtube_url(input_text) and build_youtube_persona_context is not None:
+            research_context = build_youtube_persona_context(YouTubeIngestInput(url=input_text))
+        else:
+            research_context = _fetch_url_content(input_text)
         if not research_context:
             research_context = _web_search_context(
                 input_text,
@@ -320,7 +330,18 @@ def deep_research_persona(
     _notify(1)
     research_chunks: list[str] = []
     if is_url or _looks_like_url(input_text):
-        html = _fetch_url_content(input_text)
+        try:
+            from .youtube_ingest import YouTubeIngestInput, build_youtube_persona_context, is_youtube_url
+        except Exception:
+            is_youtube_url = lambda _value: False  # type: ignore[assignment]
+            build_youtube_persona_context = None  # type: ignore[assignment]
+            YouTubeIngestInput = None  # type: ignore[assignment]
+
+        html = ""
+        if is_youtube_url(input_text) and build_youtube_persona_context is not None:
+            html = build_youtube_persona_context(YouTubeIngestInput(url=input_text))
+        else:
+            html = _fetch_url_content(input_text)
         if html:
             research_chunks.append(html)
 

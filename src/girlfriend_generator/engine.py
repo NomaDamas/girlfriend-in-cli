@@ -65,6 +65,8 @@ class ConversationSession:
     strategy_uses_this_session: int = 0
     max_strategy_per_session: int = 3
     boundary_cooldown: bool = False
+    action_reactions_enabled: bool = True
+    last_action_reaction_at: datetime | None = None
 
     def __post_init__(self) -> None:
         self.relationship_state = RelationshipState(
@@ -101,6 +103,22 @@ class ConversationSession:
             self.mood.shift("happy", intensity=0.75)
         self.boundary_cooldown = True
         self.schedule_initiative(now)
+
+    def action_reaction_due(
+        self,
+        now: datetime | None = None,
+        cooldown_seconds: int = 45,
+    ) -> bool:
+        if not self.action_reactions_enabled:
+            return False
+        now = now or utc_now()
+        if self.last_action_reaction_at is None:
+            return True
+        elapsed = (now - self.last_action_reaction_at).total_seconds()
+        return elapsed >= cooldown_seconds
+
+    def record_action_reaction(self, now: datetime | None = None) -> None:
+        self.last_action_reaction_at = now or utc_now()
 
     @property
     def current_relationship_label(self) -> str:

@@ -1323,9 +1323,14 @@ def _handle_key(
     is_scroll_up = key in ("\x1b[A", "\x1b[5~", "[")
     is_scroll_down = key in ("\x1b[B", "\x1b[6~", "]")
     if is_scroll_up and not draft:
+        reacted = _maybe_add_action_reaction(session, persona, "scroll")
         return {
             "draft": draft,
-            "status_line": "이전 대화 보는 중 · 입력창이 비어 있을 때 ↑↓로 이동",
+            "status_line": (
+                f"{persona.name} noticed you scrolling back. · 입력창이 비어 있을 때 ↑↓로 이동"
+                if reacted
+                else "이전 대화 보는 중 · 입력창이 비어 있을 때 ↑↓로 이동"
+            ),
             "pending_job": pending_job,
             "show_trace": show_trace,
             "voice_output_enabled": voice_output_enabled,
@@ -1457,9 +1462,16 @@ def _handle_key(
         }
 
     if key.isprintable():
+        reacted = False
+        if _looks_like_large_paste(key):
+            reacted = _maybe_add_action_reaction(session, persona, "paste", detail=len(key))
         return {
             "draft": draft + key,
-            "status_line": "Editing draft...",
+            "status_line": (
+                f"{persona.name} noticed the big paste."
+                if reacted
+                else "Editing draft..."
+            ),
             "pending_job": pending_job,
             "show_trace": show_trace,
             "voice_output_enabled": voice_output_enabled,
@@ -1474,6 +1486,32 @@ def _handle_key(
         "voice_output_enabled": voice_output_enabled,
         "quit": False,
     }
+
+
+def _looks_like_large_paste(key: str) -> bool:
+    return len(key) >= 80 or key.count("\n") >= 2
+
+
+def _maybe_add_action_reaction(
+    session: ConversationSession,
+    persona: Persona,
+    action: str,
+    detail: int | None = None,
+) -> bool:
+    if not session.action_reaction_due():
+        return False
+    if action == "paste":
+        line = (
+            f"{persona.name}: 이게 다 뭐야... {detail or '많은'}글자나 붙여넣었네. "
+            "천천히 같이 보자."
+        )
+    elif action == "scroll":
+        line = f"{persona.name}: 방금 예전 대화 다시 봤지? 뭐 찾는 거야?"
+    else:
+        return False
+    session.add_assistant_message(line, schedule_nudge=False)
+    session.record_action_reaction()
+    return True
 
 
 def _handle_command(
@@ -1499,6 +1537,26 @@ def _handle_command(
             "show_trace": show_trace,
             "voice_output_enabled": voice_output_enabled,
             "quit": True,
+        }
+    if lowered in {"/actions off", "/action-reactions off"}:
+        session.action_reactions_enabled = False
+        return {
+            "draft": "",
+            "status_line": "Non-text action reactions off.",
+            "pending_job": pending_job,
+            "show_trace": show_trace,
+            "voice_output_enabled": voice_output_enabled,
+            "quit": False,
+        }
+    if lowered in {"/actions on", "/action-reactions on"}:
+        session.action_reactions_enabled = True
+        return {
+            "draft": "",
+            "status_line": "Non-text action reactions on.",
+            "pending_job": pending_job,
+            "show_trace": show_trace,
+            "voice_output_enabled": voice_output_enabled,
+            "quit": False,
         }
     if lowered == "/back":
         return {

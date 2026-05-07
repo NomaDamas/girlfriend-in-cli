@@ -1,4 +1,5 @@
 from pathlib import Path
+from types import SimpleNamespace
 
 from rich.console import Console
 
@@ -1028,6 +1029,44 @@ def test_endless_mode_can_trigger_boundary_again() -> None:
     session._update_boundary_gate()
     session.affection_score = 1
     assert session.consume_boundary_trigger() == "game_over"
+
+
+def test_show_ending_continue_silent_marks_success_clear(monkeypatch) -> None:
+    class _DummyLive:
+        def stop(self):
+            return None
+
+        def start(self, refresh=False):
+            return None
+
+    persona = _load_test_persona()
+    session = ConversationSession(persona=persona)
+    session.bootstrap()
+    console = Console(record=True, width=100)
+    cleared_calls: list[tuple[str, str]] = []
+
+    monkeypatch.setattr("girlfriend_generator.wide_input.wide_input", lambda _prompt="": "e")
+    monkeypatch.setattr(
+        "girlfriend_generator.app._determine_relationship_state",
+        lambda *_args, **_kwargs: SimpleNamespace(
+            label="married cofounders",
+            summary="같이 프로젝트를 운영하는 관계",
+            situation="함께 새 기능을 배포한 밤",
+            guidance="관계를 끝내지 않고 다음 단계로 이어간다",
+        ),
+    )
+    monkeypatch.setattr(
+        "girlfriend_generator.companion_state.mark_cleared",
+        lambda persona_name, milestone="lover", persona_path="": cleared_calls.append((persona_name, milestone)),
+    )
+
+    result = _show_ending(_DummyLive(), console, persona, session, "success", provider=object())
+
+    assert result == "continue"
+    assert cleared_calls == [(persona.name, "lover")]
+    assert session.endless_mode is True
+    assert session.messages[-1].role == "system"
+    assert "새 관계" in session.messages[-1].text
 
 
 def test_show_full_coach_panel_renders_full_feedback() -> None:

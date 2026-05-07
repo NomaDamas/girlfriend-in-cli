@@ -31,6 +31,12 @@ Generate a persona with this EXACT JSON structure (respond with ONLY valid JSON,
   "accent_color": "magenta/cyan/yellow/green/red/blue (pick one that fits their vibe)",
   "provider_system_hint": "1 sentence in Korean — key personality note for the LLM",
   "context_summary": "1 sentence in Korean — overall relationship context",
+  "profile_image": {{
+    "url": "public image URL if confidently found, otherwise empty string",
+    "source": "auto_fetched",
+    "cached_path": "",
+    "style": "real/anime/illustration"
+  }},
   "typing": {{"min_seconds": 0.8, "max_seconds": 3.2}},
   "nudge_policy": {{
     "idle_after_seconds": 35,
@@ -61,6 +67,7 @@ Rules:
   with reasonable traits based on any clues in the input.
 - Make the personality VIVID and SPECIFIC — avoid generic "친절하고 밝은" descriptions.
 - Texting style should match the person/character (celebrity = busy, anime character = stylized, etc).
+- Include profile_image only when you have a likely public image URL; leave url empty if uncertain.
 - Korean text except for English names/words.
 """
 

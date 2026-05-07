@@ -9,6 +9,7 @@ from .models import (
     InitiativeProfile,
     NudgePolicy,
     Persona,
+    ProfileImage,
     StyleProfile,
     TypingProfile,
 )
@@ -57,6 +58,7 @@ def persona_from_pack(payload: dict[str, Any]) -> Persona:
         or payload.get("relationship", {}).get("dynamic_personality", "")
         or payload.get("situation")
         or payload.get("summary", ""),
+        profile_image=_profile_image_from_payload(payload.get("profile_image")),
         style_profile=StyleProfile(
             **payload.get(
                 "style_profile",
@@ -91,6 +93,34 @@ def persona_from_pack(payload: dict[str, Any]) -> Persona:
     )
     persona.validate()
     return persona
+
+
+def _profile_image_from_payload(value: Any) -> ProfileImage | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, str):
+        if value.startswith(("http://", "https://")):
+            return ProfileImage(url=value, source="user_uploaded")
+        return ProfileImage(cached_path=value, source="user_uploaded")
+    if not isinstance(value, dict):
+        raise ValueError("profile_image must be an object, URL/path string, or null.")
+
+    url = str(value.get("url", "") or "")
+    cached_path = str(value.get("cached_path", "") or value.get("path", "") or "")
+    source = str(value.get("source", "") or "user_uploaded")
+    style = str(value.get("style", "") or "real")
+    if source not in {"auto_fetched", "user_uploaded", "generated"}:
+        raise ValueError("profile_image.source must be auto_fetched, user_uploaded, or generated.")
+    if style not in {"real", "anime", "illustration"}:
+        raise ValueError("profile_image.style must be real, anime, or illustration.")
+    if not url and not cached_path:
+        return None
+    return ProfileImage(
+        url=url,
+        source=source,
+        cached_path=cached_path,
+        style=style,
+    )
 
 
 def _load_payload(path: Path) -> dict[str, Any]:

@@ -34,6 +34,61 @@ class NudgePolicy:
 
 
 @dataclass(slots=True)
+class DifficultSituationTemplate:
+    id: str
+    title: str
+    opening_line: str
+    mood: MoodType = "sulky"
+    trigger_keywords: list[str] = field(default_factory=list)
+    recovery_keywords: list[str] = field(default_factory=list)
+    failure_keywords: list[str] = field(default_factory=list)
+    persona_modes: list[str] = field(default_factory=list)
+    min_user_turns: int = 2
+    recovery_score_required: int = 2
+    start_affection_delta: int = -6
+    recovery_affection_delta: int = 10
+    failure_affection_delta: int = -12
+    prompt_guidance: str = ""
+
+
+@dataclass(slots=True)
+class DifficultSituationState:
+    template_id: str
+    title: str
+    opening_line: str
+    mood: MoodType
+    started_at_turn: int
+    min_user_turns: int
+    recovery_score_required: int
+    start_affection_delta: int
+    recovery_affection_delta: int
+    failure_affection_delta: int
+    prompt_guidance: str = ""
+    user_turns: int = 0
+    repair_score: int = 0
+    active: bool = True
+    outcome: str = ""
+    resolution_summary: str = ""
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "template_id": self.template_id,
+            "title": self.title,
+            "opening_line": self.opening_line,
+            "mood": self.mood,
+            "started_at_turn": self.started_at_turn,
+            "min_user_turns": self.min_user_turns,
+            "recovery_score_required": self.recovery_score_required,
+            "repair_score": self.repair_score,
+            "user_turns": self.user_turns,
+            "active": self.active,
+            "outcome": self.outcome,
+            "resolution_summary": self.resolution_summary,
+            "prompt_guidance": self.prompt_guidance,
+        }
+
+
+@dataclass(slots=True)
 class ContextEvidence:
     source_type: str
     label: str
@@ -97,6 +152,7 @@ class Persona:
     nudge_policy: NudgePolicy = field(default_factory=NudgePolicy)
     difficulty: str = "normal"  # easy, normal, hard, nightmare
     special_mode: str = ""  # "", "yandere"
+    difficult_situation_ids: list[str] = field(default_factory=list)
 
     def validate(self) -> None:
         if self.age < 20:

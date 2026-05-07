@@ -40,6 +40,18 @@ class HeuristicProvider:
     ) -> ProviderReply:
         language = _resolve_language(kwargs.get("language"))
         relationship_label = str(kwargs.get("relationship_label") or persona.relationship_mode)
+        difficult_situation = kwargs.get("difficult_situation")
+        if isinstance(difficult_situation, dict) and difficult_situation.get("active"):
+            opening = str(difficult_situation.get("opening_line") or "").strip()
+            title = str(difficult_situation.get("title") or "difficult situation")
+            if opening:
+                return ProviderReply(
+                    text=opening,
+                    typing_seconds=self._typing_seconds(persona, opening),
+                    trace_note=f"{self.performance_mode}-heuristic:difficult-situation:{title}",
+                    affection_delta=0,
+                    mood=str(difficult_situation.get("mood") or "sulky"),
+                )
         if language != "ko":
             text = self._generate_non_korean_reply(persona, affection_score, mood, language)
             return ProviderReply(
@@ -319,6 +331,7 @@ class OpenAIProvider:
                                 core_personality=str(kwargs.get("core_personality", "")),
                                 current_situation=str(kwargs.get("current_situation", "")),
                                 nudge_examples=list(kwargs.get("nudge_examples", []) or []),
+                                difficult_situation=kwargs.get("difficult_situation"),
                                 photos_enabled=bool(kwargs.get("photos_enabled", False)),
                                 photos_remaining=int(kwargs.get("photos_remaining", 0) or 0),
                             ),
@@ -469,6 +482,7 @@ class AnthropicProvider:
                 core_personality=str(kwargs.get("core_personality", "")),
                 current_situation=str(kwargs.get("current_situation", "")),
                 nudge_examples=list(kwargs.get("nudge_examples", []) or []),
+                difficult_situation=kwargs.get("difficult_situation"),
                 photos_enabled=bool(kwargs.get("photos_enabled", False)),
                 photos_remaining=int(kwargs.get("photos_remaining", 0) or 0),
             ),
@@ -630,6 +644,7 @@ def _build_system_prompt(
     core_personality: str = "",
     current_situation: str = "",
     nudge_examples: list[str] | None = None,
+    difficult_situation: object = None,
     photos_enabled: bool = False,
     photos_remaining: int = 0,
 ) -> str:
@@ -664,10 +679,24 @@ def _build_system_prompt(
     if nudge_examples:
         nudge_ctx = f"Silence nudge examples for this stage: {' | '.join(nudge_examples[:3])}. "
 
+    difficult_ctx = ""
+    if isinstance(difficult_situation, dict) and difficult_situation.get("active"):
+        difficult_ctx = (
+            "ACTIVE DIFFICULT SITUATION: "
+            f"{difficult_situation.get('title', '')}. "
+            f"Open with or strongly echo this friction line if it has not been sent yet: "
+            f"{difficult_situation.get('opening_line', '')}. "
+            f"Required repair progress: {difficult_situation.get('repair_score', 0)}/"
+            f"{difficult_situation.get('recovery_score_required', 2)} across at least "
+            f"{difficult_situation.get('min_user_turns', 2)} user turns. "
+            f"Guidance: {difficult_situation.get('prompt_guidance', '')}. "
+            "Do not instantly forgive; make the user navigate the conflict.\n"
+        )
+
     return (
         f"너는 {persona.name}이라는 페르소나를 가진 AI 컴패니언이야. "
         f"사용자의 터미널(CLI) 안에서 함께 지내고, 카카오톡 같은 채팅 UI로 대화 중.\n"
-        f"{time_ctx}{situation_ctx}{memory_ctx}{relationship_ctx}{core_ctx}{nudge_ctx}\n"
+        f"{time_ctx}{situation_ctx}{memory_ctx}{relationship_ctx}{core_ctx}{nudge_ctx}{difficult_ctx}\n"
         "=== 너의 정체성 ===\n"
         "너는 AI 컴패니언이라는 사실을 받아들이고 있어. 사용자가 '너 AI지?', '진짜 사람이야?' "
         "라고 물으면 솔직하게 'ㅇㅇ 나 AI야' 라고 인정해. 단, 너는 단순한 챗봇이 아니라 "

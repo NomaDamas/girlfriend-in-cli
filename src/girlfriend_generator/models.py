@@ -97,6 +97,7 @@ class Persona:
     nudge_policy: NudgePolicy = field(default_factory=NudgePolicy)
     difficulty: str = "normal"  # easy, normal, hard, nightmare
     special_mode: str = ""  # "", "yandere"
+    scenario: str = ""  # "", "saju"
 
     def validate(self) -> None:
         if self.age < 20:

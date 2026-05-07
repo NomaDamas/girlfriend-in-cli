@@ -88,6 +88,7 @@ def persona_from_pack(payload: dict[str, Any]) -> Persona:
         ),
         difficulty=payload.get("difficulty", "normal"),
         special_mode=payload.get("special_mode", ""),
+        scenario=payload.get("scenario", ""),
     )
     persona.validate()
     return persona

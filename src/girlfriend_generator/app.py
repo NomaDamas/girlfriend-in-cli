@@ -1260,7 +1260,7 @@ def _finish_job(
             return None, previous_delivery, previous_status
 
         # ProviderReply now has parsed fields from LLM JSON
-        actual_text = reply.text  # already clean
+        actual_text = _with_translation_subtitle(reply.text, reply.translated_text)
         latest_user_text = next(
             (message.text for message in reversed(session.messages) if message.role == "user"),
             "",
@@ -1301,6 +1301,14 @@ def _finish_job(
         return None, delivery, "답장을 준비 중이에요."
 
     return None, previous_delivery, previous_status
+
+
+def _with_translation_subtitle(text: str, translated_text: str = "") -> str:
+    clean_text = (text or "").strip()
+    clean_translation = (translated_text or "").strip()
+    if not clean_translation or clean_translation == clean_text:
+        return clean_text
+    return f"{clean_text}\n({clean_translation})"
 
 
 def _handle_key(

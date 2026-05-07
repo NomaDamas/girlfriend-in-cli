@@ -97,6 +97,7 @@ class Persona:
     nudge_policy: NudgePolicy = field(default_factory=NudgePolicy)
     difficulty: str = "normal"  # easy, normal, hard, nightmare
     special_mode: str = ""  # "", "yandere"
+    language: str = "ko"
 
     def validate(self) -> None:
         if self.age < 20:
@@ -144,6 +145,7 @@ class ProviderReply:
     burst_messages: list[str] = field(default_factory=list)
     next_proactive_seconds: int | None = None
     photo_prompt: str = ""
+    translated_text: str = ""
 
 
 @dataclass(slots=True)

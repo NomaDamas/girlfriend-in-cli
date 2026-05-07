@@ -88,6 +88,12 @@ def persona_from_pack(payload: dict[str, Any]) -> Persona:
         ),
         difficulty=payload.get("difficulty", "normal"),
         special_mode=payload.get("special_mode", ""),
+        language=str(
+            payload.get("language")
+            or payload.get("persona_language")
+            or payload.get("locale")
+            or "ko"
+        ),
     )
     persona.validate()
     return persona

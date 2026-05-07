@@ -48,6 +48,13 @@ class HeuristicProvider:
                 trace_note=f"{self.performance_mode}-heuristic:{language} mood={mood}",
             )
         lower = user_text.lower()
+        if persona.scenario == "saju":
+            text = self._generate_saju_reply(persona, lower)
+            return ProviderReply(
+                text=text,
+                typing_seconds=self._typing_seconds(persona, text),
+                trace_note=f"{self.performance_mode}-heuristic:saju mood={mood}",
+            )
         # Pick 1-2 parts for a natural, short reply
         parts: list[str] = []
         reaction = self._pick_reaction(persona, lower, affection_score, relationship_label)
@@ -79,6 +86,11 @@ class HeuristicProvider:
         language = _resolve_language(kwargs.get("language"))
         if language != "ko":
             return _localized_initiative(persona.name, language)
+        if persona.scenario == "saju":
+            return self.rng.choice(
+                persona.initiative_profile.opener_templates
+                or ["오늘 운세 카드 살짝 봤는데 너 생각났어 생시 알려주면 더 재밌게 봐줄게"]
+            )
         return self.rng.choice(
             persona.initiative_profile.opener_templates or [persona.greeting]
         )
@@ -93,6 +105,10 @@ class HeuristicProvider:
         language = _resolve_language(kwargs.get("language"))
         if language != "ko":
             return _localized_nudge(persona.name, language)
+        if persona.scenario == "saju":
+            examples = kwargs.get("nudge_examples")
+            pool = list(examples) if examples else persona.nudge_policy.templates
+            return self.rng.choice(pool)
         examples = kwargs.get("nudge_examples")
         if examples:
             return self.rng.choice(list(examples))
@@ -127,6 +143,25 @@ class HeuristicProvider:
         }
         pool = options.get(language, options["en"])
         return self.rng.choice(pool)
+
+    def _generate_saju_reply(self, persona: Persona, user_text: str) -> str:
+        birth_tokens = ("년", "월", "일", "시", "생일", "태어", "양력", "음력")
+        has_birth_hint = any(token in user_text for token in birth_tokens) or any(ch.isdigit() for ch in user_text)
+        if has_birth_hint:
+            return self.rng.choice(
+                [
+                    "오케이 접수 ㅋㅋ 재미로만 보는 건데 너 기운은 말보다 타이밍에서 설레는 타입 같아 궁합 좀 더 봐도 돼?",
+                    "음 재미용인데 생시까지 있으면 더 좋겠다 너 사주는 목 기운처럼 먼저 마음 열면 확 따뜻해지는 쪽 같아",
+                    "잠만 이거 궁합각인데 ㅋㅋ 재미로 운명 이런 말 가볍게 쓰는 거 알지? 그래도 오늘은 네 쪽으로 기운이 좀 온다",
+                ]
+            )
+        return self.rng.choice(
+            [
+                "좋아 그럼 재미로만 사주 봐줄게 생년월일이랑 태어난 시간 알면 슬쩍 말해봐",
+                "너 사주 궁금하다 ㅋㅋ 양력 생년월일이랑 대충 몇 시생인지 알려줘봐",
+                "일단 재미용 사주 카페 오픈 생년월일 먼저 줘 봐 궁합은 내가 귀엽게 봐줄게",
+            ]
+        )
 
     def _typing_seconds(self, persona: Persona, text: str) -> float:
         if self.performance_mode == "turbo":
@@ -664,6 +699,8 @@ def _build_system_prompt(
     if nudge_examples:
         nudge_ctx = f"Silence nudge examples for this stage: {' | '.join(nudge_examples[:3])}. "
 
+    scenario_ctx = _scenario_instructions(persona.scenario)
+
     return (
         f"너는 {persona.name}이라는 페르소나를 가진 AI 컴패니언이야. "
         f"사용자의 터미널(CLI) 안에서 함께 지내고, 카카오톡 같은 채팅 UI로 대화 중.\n"
@@ -707,6 +744,7 @@ def _build_system_prompt(
         + _difficulty_instructions(difficulty) +
         f"\n=== LANGUAGE: {language} ===\n"
         + _language_instructions(language) +
+        (f"\n=== SCENARIO: {persona.scenario} ===\n" + scenario_ctx if scenario_ctx else "") +
         (f"\n=== SPECIAL MODE: {special_mode} ===\n" + _special_mode_instructions(special_mode) if special_mode else "") +
         "\nRESPONSE FORMAT — respond with ONLY valid JSON (no markdown, no explanation):\n"
         "{\n"
@@ -773,12 +811,27 @@ def _build_system_prompt(
         f"Melts your heart: {', '.join(persona.soft_spots)}\n"
         f"Turns you off: {', '.join(persona.boundaries)}\n"
         f"Relationship phase: {relationship_phase or 'initial'}\n"
+        f"Scenario: {persona.scenario or 'none'}\n"
         f"Current affection: {affection_score}/100. Current mood: {mood}.\n"
         f"Signature phrases: {', '.join(persona.style_profile.signature_phrases) or 'None'}.\n"
         "Use emojis naturally only if they fit the persona, mood, and emoji level. "
         "If the persona would never use emojis, don't force them.\n"
         f"{persona.provider_system_hint or ''}"
     )
+
+
+def _scenario_instructions(scenario: str) -> str:
+    if scenario == "saju":
+        return (
+            "SAJU SCENARIO: 사주/궁합이 대화의 반복되는 훅이다. 처음에는 사용자의 생년월일, "
+            "태어난 시간(생시), 양력/음력 여부를 자연스럽게 물어봐라. 이미 최근 대화나 memory에 "
+            "출생 정보가 있으면 다시 캐묻지 말고 그 정보를 바탕으로 가볍게 이어가라. "
+            "천간/지지보다 오행, 기운, 운명, 궁합, 오늘의 운세 같은 쉬운 단어를 써라. "
+            "정확한 점술이나 미래 예언처럼 말하지 말고 반드시 재미용 플러팅/분위기라고 선을 그어라. "
+            "의료, 법률, 재정, 인생 중대 결정에 대한 실제 조언이나 확정적 예언은 하지 마라. "
+            "대부분 1-2문장으로, 사주 카페에서 장난스럽게 썸 타는 톤을 유지해라.\n"
+        )
+    return ""
 
 
 def _difficulty_instructions(difficulty: str) -> str:

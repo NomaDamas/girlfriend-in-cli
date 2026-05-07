@@ -7,6 +7,7 @@ from girlfriend_generator.providers import (
     HeuristicProvider,
     OllamaProvider,
     OpenAIProvider,
+    _build_system_prompt,
 )
 
 
@@ -143,3 +144,31 @@ def test_heuristic_provider_respects_non_korean_language() -> None:
     )
 
     assert any(token in reply.text.lower() for token in ["really", "cute", "listening", "attention"])
+
+
+def test_saju_system_prompt_injects_scenario_rules() -> None:
+    persona = load_persona(Path("personas/mina-saju-cafe.json"))
+
+    prompt = _build_system_prompt(persona, affection_score=50)
+
+    assert "=== SCENARIO: saju ===" in prompt
+    assert "생년월일" in prompt
+    assert "재미용" in prompt
+    assert "확정적 예언" in prompt
+    assert "의료, 법률, 재정" in prompt
+
+
+def test_heuristic_provider_keeps_saju_framing_after_birth_info() -> None:
+    persona = load_persona(Path("personas/mina-saju-cafe.json"))
+    provider = HeuristicProvider()
+
+    reply = provider.generate_reply(
+        persona=persona,
+        history=[],
+        user_text="1993년 4월 12일 밤 11시쯤 태어났어",
+        affection_score=50,
+        language="ko",
+    )
+
+    assert any(token in reply.text for token in ["궁합", "사주", "오행", "기운", "운명"])
+    assert any(token in reply.text for token in ["재미", "가볍게", "알지"])

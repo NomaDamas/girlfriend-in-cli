@@ -269,6 +269,7 @@ def run_chat_app(config: AppConfig) -> int:
     status_line = t("prompt_message_input")
     pending_job: BackgroundJob | None = None
     pending_delivery: PendingDelivery | None = None
+    pending_user_delivered_at: float | None = None
     last_key_at = time.monotonic()
     show_trace = config.show_trace
     last_render_key: tuple[Any, ...] | None = None
@@ -315,6 +316,21 @@ def run_chat_app(config: AppConfig) -> int:
                             previous_delivery=pending_delivery,
                             previous_status=status_line,
                         )
+
+                if (
+                    pending_user_delivered_at is not None
+                    and time.monotonic() >= pending_user_delivered_at
+                ):
+                    session.mark_last_user_message("delivered")
+                    pending_user_delivered_at = None
+
+                if (
+                    pending_delivery is not None
+                    and pending_delivery.kind == "reply"
+                    and pending_delivery.typing_starts_at is not None
+                    and time.monotonic() >= pending_delivery.typing_starts_at
+                ):
+                    session.mark_last_user_message("seen")
 
                 if pending_delivery and time.monotonic() >= pending_delivery.due_at:
                     delivered_text = pending_delivery.text
@@ -460,7 +476,9 @@ def run_chat_app(config: AppConfig) -> int:
                         photo_state=photo_state,
                     )
                     draft = outcome["draft"]
-                    scroll_offset = 0 if outcome.get("sent") else scroll_offset
+                    if outcome.get("sent"):
+                        scroll_offset = 0
+                        pending_user_delivered_at = time.monotonic() + 0.45
                     # Strategy discussion
                     if outcome.get("strategy"):
                         _show_strategy_discussion(
@@ -1284,9 +1302,7 @@ def _finish_job(
         else:
             session.proactive_due_at = None
 
-        # Add "seen" delay before typing indicator shows (1-2.5s)
-        import random
-        seen_delay = random.uniform(1.0, 2.5)
+        seen_delay = session.seen_delay_seconds()
         now = time.monotonic()
         trace_extra = f" | thought: {reply.internal_thought}" if reply.internal_thought else ""
         delivery = PendingDelivery(
@@ -1864,14 +1880,9 @@ def _render_chat(console: Console, session: ConversationSession, assistant_typin
         visible_messages = session.messages
     history = _fit_messages(visible_messages, available_lines)
     blocks = []
-    for i, message in enumerate(history):
-        is_read = True
-        if message.role == "user":
-            remaining = history[i + 1:]
-            is_read = any(m.role == "assistant" for m in remaining)
+    for message in history:
         blocks.append(_render_message(
             message, available_width,
-            is_read=is_read,
             persona_name=session.persona.name,
             accent=session.persona.accent_color,
         ))
@@ -1923,10 +1934,17 @@ def _fit_messages(messages: list[ChatMessage], max_lines: int) -> list[ChatMessa
     return result
 
 
+def _read_receipt_marker(state: str) -> str:
+    if state == "seen":
+        return "[bright_cyan]✓✓[/bright_cyan]"
+    if state == "delivered":
+        return "[grey62]✓✓[/grey62]"
+    return "[grey42]✓[/grey42]"
+
+
 def _render_message(
     message: ChatMessage,
     width: int,
-    is_read: bool = True,
     persona_name: str = "",
     accent: str = "magenta",
 ):
@@ -1936,7 +1954,7 @@ def _render_message(
     max_chars = bubble_width * 4
     display_text = message.text if len(message.text) <= max_chars else message.text[:max_chars] + "..."
     if message.role == "user":
-        read_mark = "[bright_cyan]✓✓[/bright_cyan]" if is_read else "[dim]✓[/dim]"
+        read_mark = _read_receipt_marker(message.read_state)
         content = Text(display_text, style="white")
         return Align.right(
             Panel(

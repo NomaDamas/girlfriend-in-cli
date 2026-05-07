@@ -28,6 +28,7 @@ from .providers import ProviderConfig, build_provider
 from .session_io import export_session, load_session_snapshot
 from .music import build_music_player
 from .photo import PhotoState, generate_photo, open_in_default_app, render_photo_message
+from .usage_metrics import start_session as start_usage_session
 from .voice import build_voice_input, build_voice_output
 
 
@@ -244,6 +245,8 @@ def run_chat_app(config: AppConfig) -> int:
         voice_input_name=voice_input.name,
     )
     session = ConversationSession(persona=persona)
+    usage_session = None
+    resumed = bool(config.resume_path and config.resume_path.exists())
     if config.resume_path and config.resume_path.exists():
         resumed_messages, resumed_state = load_session_snapshot(config.resume_path)
         session.messages = resumed_messages
@@ -264,6 +267,14 @@ def run_chat_app(config: AppConfig) -> int:
     else:
         session.bootstrap()
         _localize_session_display_state(provider, persona, session)
+    usage_session = start_usage_session(
+        persona_name=persona.name,
+        persona_path=str(config.persona_path),
+        provider_name=config.provider_name,
+        provider_model=config.provider_model,
+        performance_mode=config.performance_mode,
+        resumed=resumed,
+    )
 
     draft = ""
     status_line = t("prompt_message_input")
@@ -527,6 +538,8 @@ def run_chat_app(config: AppConfig) -> int:
                     )
                     last_render_key = render_key
     finally:
+        if usage_session is not None:
+            usage_session.finish()
         music_player.stop()
         if config.export_on_exit and session.messages:
             export_session(

@@ -419,6 +419,9 @@ def main() -> int:
     parser = build_parser()
     raw_args = sys.argv[1:]
     args = parser.parse_args(raw_args)
+    from .usage_metrics import record_app_launch
+
+    record_app_launch()
     _apply_saved_runtime_settings(args, parser, raw_args)
     _apply_provider_defaults(args)
     persona_dir = bundled_persona_dir()

@@ -43,6 +43,7 @@ class AppConfig:
     performance_mode: str = "turbo"
     voice_output: bool = False
     voice_input_command: str | None = None
+    call_mode: bool = False
     photos_enabled: bool = False
     photos_auto_open: bool = True
     show_trace: bool = True
@@ -264,9 +265,19 @@ def run_chat_app(config: AppConfig) -> int:
     else:
         session.bootstrap()
         _localize_session_display_state(provider, persona, session)
+    call_mode = config.call_mode
+    if call_mode:
+        session.add_system_message(
+            "[Call started] Press Enter to speak through the configured voice input. "
+            "Type /hangup to return to text chat."
+        )
 
     draft = ""
-    status_line = t("prompt_message_input")
+    status_line = (
+        "Call mode ready. Press Enter to talk; type /hangup to return to chat."
+        if call_mode
+        else t("prompt_message_input")
+    )
     pending_job: BackgroundJob | None = None
     pending_delivery: PendingDelivery | None = None
     last_key_at = time.monotonic()
@@ -455,6 +466,7 @@ def run_chat_app(config: AppConfig) -> int:
                         voice_input=voice_input,
                         voice_output_available=voice_output.name != "off",
                         voice_output_enabled=voice_output_enabled,
+                        call_mode=call_mode,
                         show_trace=show_trace, session_dir=config.session_dir,
                         music_player=music_player,
                         photo_state=photo_state,
@@ -474,6 +486,7 @@ def run_chat_app(config: AppConfig) -> int:
                     pending_job = outcome["pending_job"]
                     show_trace = outcome["show_trace"]
                     voice_output_enabled = outcome["voice_output_enabled"]
+                    call_mode = outcome.get("call_mode", call_mode)
                     if "scroll_delta" in outcome:
                         scroll_offset = max(0, scroll_offset + outcome["scroll_delta"])
                         max_scroll = max(0, len(session.messages) - 4)
@@ -1316,6 +1329,7 @@ def _handle_key(
     voice_output_enabled: bool,
     show_trace: bool,
     session_dir: Path,
+    call_mode: bool = False,
     music_player: Any = None,
     photo_state: PhotoState | None = None,
 ) -> dict[str, Any]:
@@ -1377,6 +1391,21 @@ def _handle_key(
     if key in {"\r", "\n"}:
         text = draft.strip()
         if not text:
+            if call_mode:
+                return _handle_command(
+                    text="/listen",
+                    session=session,
+                    provider=provider,
+                    pending_job=pending_job,
+                    pending_delivery=pending_delivery,
+                    voice_input=voice_input,
+                    voice_output_available=voice_output_available,
+                    voice_output_enabled=voice_output_enabled,
+                    call_mode=call_mode,
+                    show_trace=show_trace,
+                    session_dir=session_dir,
+                    music_player=music_player,
+                )
             return {
                 "draft": draft,
                 "status_line": "Empty message skipped.",
@@ -1402,6 +1431,7 @@ def _handle_key(
                 voice_input=voice_input,
                 voice_output_available=voice_output_available,
                 voice_output_enabled=voice_output_enabled,
+                call_mode=call_mode,
                 show_trace=show_trace,
                 session_dir=session_dir,
                 music_player=music_player,
@@ -1487,6 +1517,7 @@ def _handle_command(
     voice_output_enabled: bool,
     show_trace: bool,
     session_dir: Path,
+    call_mode: bool = False,
     music_player: Any = None,
 ) -> dict[str, Any]:
     lowered = text.lower()
@@ -1525,7 +1556,9 @@ def _handle_command(
             "/export — save the session transcript\n"
             "/music — toggle mood music\n"
             "/voice on|off — toggle voice output\n"
-            "/listen — start voice input"
+            "/listen — start voice input\n"
+            "/call — start press-to-talk call mode\n"
+            "/hangup — leave call mode"
         )
         return {
             "draft": "",
@@ -1533,6 +1566,66 @@ def _handle_command(
             "pending_job": pending_job,
             "show_trace": show_trace,
             "voice_output_enabled": voice_output_enabled,
+            "quit": False,
+        }
+    if lowered == "/call":
+        if _assistant_busy(pending_job, pending_delivery):
+            session.add_system_message(
+                "Wait for the current assistant turn to finish before starting a call."
+            )
+            return {
+                "draft": "",
+                "status_line": "Assistant is still busy.",
+                "pending_job": pending_job,
+                "show_trace": show_trace,
+                "voice_output_enabled": voice_output_enabled,
+                "call_mode": call_mode,
+                "quit": False,
+            }
+        if getattr(voice_input, "name", "off") == "off":
+            session.add_system_message(
+                "Call mode needs voice input. Provide --voice-input-command with a command that prints a transcript."
+            )
+            return {
+                "draft": "",
+                "status_line": "Call mode needs voice input.",
+                "pending_job": pending_job,
+                "show_trace": show_trace,
+                "voice_output_enabled": voice_output_enabled,
+                "call_mode": False,
+                "quit": False,
+            }
+        if not call_mode:
+            session.add_system_message(
+                "[Call started] Press Enter to speak. Type /hangup to return to text chat."
+            )
+        if not voice_output_available:
+            session.add_system_message(
+                "Voice output is unavailable here, so replies will stay visible as text only."
+            )
+        return {
+            "draft": "",
+            "status_line": "Call mode ready. Press Enter to talk; type /hangup to return to chat.",
+            "pending_job": pending_job,
+            "show_trace": show_trace,
+            "voice_output_enabled": voice_output_enabled or voice_output_available,
+            "call_mode": True,
+            "quit": False,
+        }
+    if lowered == "/hangup":
+        if call_mode:
+            session.add_system_message("[Call ended] Returned to text chat.")
+            status_line = "Call ended. Back to text chat."
+        else:
+            session.add_system_message("No active call to hang up.")
+            status_line = "No active call."
+        return {
+            "draft": "",
+            "status_line": status_line,
+            "pending_job": pending_job,
+            "show_trace": show_trace,
+            "voice_output_enabled": voice_output_enabled,
+            "call_mode": False,
             "quit": False,
         }
     if lowered == "/trace":
@@ -1766,12 +1859,18 @@ def _handle_command(
                 "quit": False,
             }
         job = BackgroundJob("listen", voice_input.listen)
+        status_line = (
+            "Call mode listening. Finish speaking when the recorder command exits..."
+            if call_mode
+            else "Listening via external transcription command..."
+        )
         return {
             "draft": "",
-            "status_line": "Listening via external transcription command...",
+            "status_line": status_line,
             "pending_job": job,
             "show_trace": show_trace,
             "voice_output_enabled": voice_output_enabled,
+            "call_mode": call_mode,
             "quit": False,
         }
     session.add_system_message(f"Unknown command: {text}")

@@ -183,6 +183,45 @@ def _drain_pending_stdin() -> None:
             break
 
 
+def _profile_avatar_text(persona: Persona) -> str:
+    name = persona.name.strip()
+    initial = name[0].upper() if name else "?"
+    if persona.profile_image is None:
+        return f"[{initial}]"
+    style_icon = {
+        "anime": "AN",
+        "illustration": "IL",
+        "real": "PH",
+    }.get(persona.profile_image.style, "PH")
+    return f"[{style_icon}]"
+
+
+def _profile_image_message(persona: Persona) -> str:
+    avatar = _profile_avatar_text(persona)
+    image = persona.profile_image
+    if image is None:
+        return (
+            f"Profile Image\n"
+            f"Default avatar: {avatar}\n"
+            "No profile_image is configured for this persona yet."
+        )
+
+    lines = [
+        "Profile Image",
+        f"Avatar fallback: {avatar}",
+        f"Style: {image.style}",
+        f"Source: {image.source}",
+    ]
+    if image.cached_path:
+        lines.append(f"Cached path: {image.cached_path}")
+    if image.url:
+        lines.append(f"URL: {image.url}")
+    lines.append(
+        "Terminal image rendering is not enabled yet; showing the safe avatar fallback."
+    )
+    return "\n".join(lines)
+
+
 
 def _spawn_photo_job(
     *,
@@ -1525,11 +1564,22 @@ def _handle_command(
             "/export — save the session transcript\n"
             "/music — toggle mood music\n"
             "/voice on|off — toggle voice output\n"
-            "/listen — start voice input"
+            "/listen — start voice input\n"
+            "/profile — show persona profile image details"
         )
         return {
             "draft": "",
             "status_line": t("status_help_opened", lang),
+            "pending_job": pending_job,
+            "show_trace": show_trace,
+            "voice_output_enabled": voice_output_enabled,
+            "quit": False,
+        }
+    if lowered == "/profile":
+        session.add_system_message(_profile_image_message(session.persona))
+        return {
+            "draft": "",
+            "status_line": "Profile image posted.",
             "pending_job": pending_job,
             "show_trace": show_trace,
             "voice_output_enabled": voice_output_enabled,
@@ -1832,8 +1882,9 @@ def _render_header(persona: Persona, session: ConversationSession):
     else:
         mode_icon = {"girlfriend": "💕", "crush": "💘"}.get(persona.relationship_mode, "💬")
 
+    avatar = _profile_avatar_text(persona)
     body = Text.assemble(
-        (f" {mode_icon} ", ""),
+        (f" {avatar} {mode_icon} ", ""),
         (persona.name, f"bold {persona.accent_color}"),
         (f"  {persona.age}세", "dim"),
         ("  ·  ", "dim"),
@@ -1874,6 +1925,7 @@ def _render_chat(console: Console, session: ConversationSession, assistant_typin
             is_read=is_read,
             persona_name=session.persona.name,
             accent=session.persona.accent_color,
+            avatar=_profile_avatar_text(session.persona),
         ))
     if assistant_typing:
         # Animated typing dots based on time
@@ -1929,6 +1981,7 @@ def _render_message(
     is_read: bool = True,
     persona_name: str = "",
     accent: str = "magenta",
+    avatar: str = "",
 ):
     bubble_width = min(width, max(24, int(width * 0.65)))
     timestamp = message.created_at.strftime("%H:%M")
@@ -1950,11 +2003,12 @@ def _render_message(
         )
     if message.role == "assistant":
         content = Text(display_text, style="white")
+        title_name = f"{avatar} {persona_name}".strip()
         return Align.left(
             Panel(
                 content,
                 border_style=accent,
-                title=f"[bold {accent}]{persona_name}[/bold {accent}]",
+                title=f"[bold {accent}]{title_name}[/bold {accent}]",
                 title_align="left",
                 subtitle=f"[dim]{timestamp}[/dim]",
                 subtitle_align="left",

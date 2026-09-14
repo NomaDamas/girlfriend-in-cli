@@ -9,7 +9,9 @@ from girlfriend_generator.app import (
     _handle_command,
     _handle_key,
     _localized_relationship_label,
+    _profile_avatar_text,
     _render_header,
+    _render_message,
     _render_screen,
     _render_trace,
     _show_full_coach_panel,
@@ -18,8 +20,8 @@ from girlfriend_generator.app import (
     _sync_provider_trace,
     run_chat_app,
 )
-from girlfriend_generator.engine import ConversationSession
-from girlfriend_generator.models import ProviderReply, RuntimeTrace
+from girlfriend_generator.engine import ConversationSession, utc_now
+from girlfriend_generator.models import ChatMessage, ProfileImage, ProviderReply, RuntimeTrace
 from girlfriend_generator.personas import load_persona
 from girlfriend_generator.voice import DisabledVoiceInput, VoiceInputAdapter
 
@@ -225,6 +227,94 @@ def test_render_header_shows_current_relationship_at_top(monkeypatch) -> None:
 
     assert "결혼한 공동창업자" in rendered
     assert "같이 브랜드를 운영하면서 이미 결혼한 상태" in rendered
+
+
+def test_render_header_uses_initial_avatar_when_profile_image_missing(monkeypatch) -> None:
+    monkeypatch.setattr("girlfriend_generator.app.get_language", lambda: "ko")
+    persona = _load_test_persona()
+    persona.profile_image = None
+    session = ConversationSession(persona=persona)
+    session.bootstrap()
+
+    rendered = _render_to_text(_render_header(persona, session))
+
+    assert _profile_avatar_text(persona) in rendered
+
+
+def test_render_message_shows_profile_avatar_for_assistant() -> None:
+    persona = _load_test_persona()
+    persona.profile_image = ProfileImage(
+        url="https://example.com/wonyoung.jpg",
+        source="auto_fetched",
+        cached_path="personas/.images/wonyoung.jpg",
+        style="real",
+    )
+    message = ChatMessage(role="assistant", text="왔어?", created_at=utc_now())
+
+    rendered = _render_to_text(
+        _render_message(
+            message,
+            width=80,
+            persona_name=persona.name,
+            accent=persona.accent_color,
+            avatar=_profile_avatar_text(persona),
+        )
+    )
+
+    assert _profile_avatar_text(persona) in rendered
+    assert persona.name in rendered
+
+
+def test_profile_command_posts_image_metadata(tmp_path: Path) -> None:
+    persona = _load_test_persona()
+    persona.profile_image = ProfileImage(
+        url="https://example.com/wonyoung.jpg",
+        source="auto_fetched",
+        cached_path="personas/.images/wonyoung.jpg",
+        style="real",
+    )
+    session = ConversationSession(persona=persona)
+    session.bootstrap()
+
+    outcome = _handle_command(
+        text="/profile",
+        session=session,
+        provider=object(),
+        pending_job=None,
+        pending_delivery=None,
+        voice_input=DisabledVoiceInput(),
+        voice_output_available=False,
+        voice_output_enabled=False,
+        show_trace=True,
+        session_dir=tmp_path,
+    )
+
+    assert outcome["status_line"] == "Profile image posted."
+    assert "Profile Image" in session.messages[-1].text
+    assert "https://example.com/wonyoung.jpg" in session.messages[-1].text
+
+
+def test_profile_command_uses_default_avatar_when_image_missing(tmp_path: Path) -> None:
+    persona = _load_test_persona()
+    persona.profile_image = None
+    session = ConversationSession(persona=persona)
+    session.bootstrap()
+
+    _handle_command(
+        text="/profile",
+        session=session,
+        provider=object(),
+        pending_job=None,
+        pending_delivery=None,
+        voice_input=DisabledVoiceInput(),
+        voice_output_available=False,
+        voice_output_enabled=False,
+        show_trace=True,
+        session_dir=tmp_path,
+    )
+
+    assert "Default avatar" in session.messages[-1].text
+    assert _profile_avatar_text(persona) in session.messages[-1].text
 
 
 def test_render_trace_shows_coach_strength_and_weakness() -> None:

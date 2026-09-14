@@ -1644,6 +1644,12 @@ def _create_persona_wizard(console: "Console") -> Path | None:  # type: ignore[n
     console.print("\n  [bold]Extra Context[/bold]  [dim](optional, paste text or leave empty)[/dim]")
     console.print("  [dim]─────────────────────────────[/dim]")
     context_desc = _ask("Description or notes about this person", "")
+    profile_image_ref = _ask("Profile image URL/path (optional)", "")
+    profile_image_style = "real"
+    if profile_image_ref:
+        profile_image_style = _ask("Profile image style (real/anime/illustration)", "real")
+        if profile_image_style not in ("real", "anime", "illustration"):
+            profile_image_style = "real"
 
     # Build the persona JSON
     from .session_io import slugify
@@ -1661,6 +1667,16 @@ def _create_persona_wizard(console: "Console") -> Path | None:  # type: ignore[n
         "accent_color": accent_color,
         "provider_system_hint": f"{name}의 말투와 성격을 자연스럽게 유지한다.",
         "context_summary": context_desc if context_desc else f"{name}과(와)의 대화 시뮬레이션",
+        "profile_image": (
+            {
+                "url": profile_image_ref if profile_image_ref.startswith(("http://", "https://")) else "",
+                "source": "user_uploaded",
+                "cached_path": "" if profile_image_ref.startswith(("http://", "https://")) else profile_image_ref,
+                "style": profile_image_style,
+            }
+            if profile_image_ref
+            else None
+        ),
         "typing": {"min_seconds": 0.9, "max_seconds": 3.2},
         "nudge_policy": {
             "idle_after_seconds": 35,

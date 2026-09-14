@@ -36,6 +36,16 @@ def export_session(
             "interests": persona.interests,
             "soft_spots": persona.soft_spots,
             "boundaries": persona.boundaries,
+            "profile_image": (
+                {
+                    "url": persona.profile_image.url,
+                    "source": persona.profile_image.source,
+                    "cached_path": persona.profile_image.cached_path,
+                    "style": persona.profile_image.style,
+                }
+                if persona.profile_image is not None
+                else None
+            ),
             "style_profile": {
                 "warmth": persona.style_profile.warmth,
                 "teasing": persona.style_profile.teasing,

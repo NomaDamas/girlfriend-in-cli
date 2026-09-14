@@ -62,6 +62,14 @@ class InitiativeProfile:
 
 
 @dataclass(slots=True)
+class ProfileImage:
+    url: str = ""
+    source: str = "user_uploaded"  # auto_fetched, user_uploaded, generated
+    cached_path: str = ""
+    style: str = "real"  # real, anime, illustration
+
+
+@dataclass(slots=True)
 class ContextBundle:
     name: str
     age: int
@@ -90,6 +98,7 @@ class Persona:
     context_summary: str = ""
     core_personality: str = ""
     dynamic_personality_seed: str = ""
+    profile_image: ProfileImage | None = None
     style_profile: StyleProfile = field(default_factory=StyleProfile)
     initiative_profile: InitiativeProfile = field(default_factory=InitiativeProfile)
     evidence: list[ContextEvidence] = field(default_factory=list)

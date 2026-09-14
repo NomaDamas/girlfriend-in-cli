@@ -41,6 +41,13 @@ Create your own persona in a single JSON file. Share it as a Gist, a URL, or jus
   "provider_system_hint": "페르소나를 강화하는 추가 지시 (한 문장)",
   "context_summary": "한 줄 요약",
 
+  "profile_image": {
+    "url": "https://example.com/image.jpg",
+    "source": "auto_fetched",
+    "cached_path": "personas/.images/jieun.jpg",
+    "style": "real"
+  },
+
   "typing": {"min_seconds": 0.9, "max_seconds": 3.2},
 
   "nudge_policy": {
@@ -80,6 +87,28 @@ Create your own persona in a single JSON file. Share it as a Gist, a URL, or jus
 
 - `""` (기본): 일반
 - `"yandere"`: 집착형, burst 메시지 자동
+
+## Profile Images
+
+`profile_image` is optional. If it is missing, the chat UI shows a default initial avatar.
+
+```json
+{
+  "profile_image": {
+    "url": "https://example.com/image.jpg",
+    "source": "auto_fetched",
+    "cached_path": "personas/.images/jieun.jpg",
+    "style": "real"
+  }
+}
+```
+
+- `url`: original public image URL
+- `source`: `auto_fetched`, `user_uploaded`, or `generated`
+- `cached_path`: local cached file path, usually under `personas/.images/`
+- `style`: `real`, `anime`, or `illustration`
+- You can also use a simple string path/URL for quick imports, for example `"profile_image": "~/Pictures/jieun.jpg"`.
+- `/profile` shows the configured image metadata. Full inline terminal rendering is not enabled yet, so the chat header and message bubbles use a safe text avatar fallback.
 
 ## How to Share
 

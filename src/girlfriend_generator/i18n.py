@@ -60,6 +60,9 @@ _STRINGS = {
         "ending_continue_prompt": "Enter: 메인 메뉴  |  C: 리포트 보고 계속  |  E: 리포트 없이 계속",
         "usage_keys_openai": "OpenAI keys",
         "usage_keys_anthropic": "Anthropic keys",
+        "random_chat": "랜덤 채팅",
+        "random_chat_desc_locked": "AI 컴패니언을 한 번 클리어하면 열려요",
+        "random_chat_desc_unlocked": "터미널에서 다른 사람과 1:1 랜덤 채팅 ({count} 클리어)",
     },
     "en": {
         "main_title": "♡ What would you like to do?",
@@ -114,6 +117,9 @@ _STRINGS = {
         "ending_continue_prompt": "Enter: main menu  |  C: continue with report  |  E: continue without report",
         "usage_keys_openai": "OpenAI keys",
         "usage_keys_anthropic": "Anthropic keys",
+        "random_chat": "Random Chat",
+        "random_chat_desc_locked": "Unlocks after you clear one AI companion",
+        "random_chat_desc_unlocked": "1:1 random chat with another human in your terminal ({count} cleared)",
     },
     "ja": {
         "main_title": "♡ 何をしたいですか？",

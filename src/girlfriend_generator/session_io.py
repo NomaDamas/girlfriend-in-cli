@@ -13,6 +13,7 @@ def export_session(
     persona: Persona,
     messages: Iterable[ChatMessage],
     relationship_state: dict | None = None,
+    difficult_situations: dict | None = None,
 ) -> tuple[Path, Path]:
     session_dir.mkdir(parents=True, exist_ok=True)
     messages = list(messages)
@@ -46,6 +47,7 @@ def export_session(
             },
         },
         "relationship_state": relationship_state or {},
+        "difficult_situations": difficult_situations or {},
         "messages": [
             {
                 "role": message.role,
@@ -60,7 +62,12 @@ def export_session(
         encoding="utf-8",
     )
     markdown_path.write_text(
-        render_markdown(persona=persona, messages=messages, relationship_state=relationship_state),
+        render_markdown(
+            persona=persona,
+            messages=messages,
+            relationship_state=relationship_state,
+            difficult_situations=difficult_situations,
+        ),
         encoding="utf-8",
     )
     return json_path, markdown_path
@@ -77,7 +84,12 @@ def _build_unique_base_name(session_dir: Path, base_name: str) -> str:
     return candidate
 
 
-def render_markdown(persona: Persona, messages: list[ChatMessage], relationship_state: dict | None = None) -> str:
+def render_markdown(
+    persona: Persona,
+    messages: list[ChatMessage],
+    relationship_state: dict | None = None,
+    difficult_situations: dict | None = None,
+) -> str:
     relation = relationship_state or {}
     lines = [
         f"# Session with {persona.name}",
@@ -86,9 +98,22 @@ def render_markdown(persona: Persona, messages: list[ChatMessage], relationship_
         f"- Relationship summary: {relation.get('summary', persona.situation)}",
         f"- Situation: {relation.get('situation', persona.situation)}",
         "",
-        "## Transcript",
-        "",
     ]
+    situation_report = difficult_situations or {}
+    situation_history = list(situation_report.get("history", []))
+    if situation_report.get("active") or situation_history:
+        lines.extend([
+            "## Difficult Situations",
+            "",
+        ])
+        active = situation_report.get("active")
+        if isinstance(active, dict) and active:
+            lines.append(f"- Active: {active.get('title', '')}")
+        for item in situation_history:
+            lines.append(f"- {item}")
+        lines.append("")
+    lines.append("## Transcript")
+    lines.append("")
     for message in messages:
         timestamp = message.created_at.strftime("%H:%M:%S")
         lines.append(f"**{message.role}** `{timestamp}`")

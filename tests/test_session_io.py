@@ -74,6 +74,30 @@ def test_export_session_persists_relationship_state(tmp_path: Path) -> None:
     assert snapshot["summary"] == "서로의 일과 삶을 같이 책임지는 상태"
 
 
+def test_export_session_persists_difficult_situation_report(tmp_path: Path) -> None:
+    persona = load_persona(Path("personas/yandere-special.json"))
+    session = ConversationSession(persona=persona)
+    session.add_user_message("오늘 다른 여자 동기랑 저녁 먹고 왔어.")
+    session.add_user_message("미안해, 네가 불안했겠다.")
+    session.add_user_message("앞으로 그런 약속은 먼저 말해줄게. 네 마음이 제일 중요해.")
+
+    json_path, markdown_path = export_session(
+        session_dir=tmp_path,
+        persona=persona,
+        messages=session.messages,
+        relationship_state=session.export_state().get("relationship_state"),
+        difficult_situations=session.export_state().get("difficult_situations"),
+    )
+
+    payload = json_path.read_text(encoding="utf-8")
+    markdown = markdown_path.read_text(encoding="utf-8")
+
+    assert "difficult_situations" in payload
+    assert "어떻게 풀었는지" in payload
+    assert "## Difficult Situations" in markdown
+    assert "recovered" in markdown
+
+
 def test_slugify_keeps_ascii_safe_names() -> None:
     assert slugify("Han Seo Jin") == "han-seo-jin"
     assert slugify("유나") == "유나"

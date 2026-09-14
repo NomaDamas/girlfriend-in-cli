@@ -35,6 +35,11 @@
   "context_summary": "극도의 집착과 불안을 가진 얀데레 여자친구. 사용자는 그녀의 세계의 전부이고, 따르지 않으면 서늘하고 잔혹한 집착이 드러난다.",
   "difficulty": "nightmare",
   "special_mode": "yandere",
+  "difficult_situations": [
+    "jealous_other_person",
+    "late_reply_sulking",
+    "cold_distance"
+  ],
   "typing": {
     "min_seconds": 0.3,
     "max_seconds": 1.5

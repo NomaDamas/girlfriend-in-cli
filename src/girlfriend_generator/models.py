@@ -7,6 +7,7 @@ from typing import Literal
 
 MessageRole = Literal["user", "assistant", "system"]
 MoodType = Literal["neutral", "happy", "playful", "sulky", "excited", "worried", "flirty"]
+ReadState = Literal["sent", "delivered", "seen"]
 
 MOOD_EMOJI: dict[str, str] = {
     "neutral": "😐",
@@ -123,6 +124,8 @@ class ChatMessage:
     role: MessageRole
     text: str
     created_at: datetime
+    read_state: ReadState = "sent"
+    seen_at: datetime | None = None
 
 
 @dataclass(slots=True)

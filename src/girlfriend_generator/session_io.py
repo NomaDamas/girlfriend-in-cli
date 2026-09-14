@@ -46,14 +46,7 @@ def export_session(
             },
         },
         "relationship_state": relationship_state or {},
-        "messages": [
-            {
-                "role": message.role,
-                "text": message.text,
-                "created_at": message.created_at.isoformat(),
-            }
-            for message in messages
-        ],
+        "messages": [_serialize_message(message) for message in messages],
     }
     json_path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2),
@@ -108,17 +101,42 @@ def load_session_snapshot(path: Path) -> tuple[list[ChatMessage], dict]:
     return _parse_messages(payload), dict(payload.get("relationship_state", {}))
 
 
+def _serialize_message(message: ChatMessage) -> dict:
+    payload: dict = {
+        "role": message.role,
+        "text": message.text,
+        "created_at": message.created_at.isoformat(),
+    }
+    if message.role == "user" and message.read_state != "sent":
+        payload["read_state"] = message.read_state
+        if message.seen_at is not None:
+            payload["seen_at"] = message.seen_at.isoformat()
+    return payload
+
+
 def _parse_messages(payload: dict) -> list[ChatMessage]:
     messages = []
     for item in payload.get("messages", []):
         created_at = datetime.fromisoformat(item["created_at"])
         if created_at.tzinfo is None:
             created_at = created_at.replace(tzinfo=timezone.utc)
+        read_state = item.get("read_state", "sent") if item.get("role") == "user" else "sent"
+        seen_at = None
+        seen_raw = item.get("seen_at")
+        if seen_raw:
+            try:
+                seen_at = datetime.fromisoformat(seen_raw)
+                if seen_at.tzinfo is None:
+                    seen_at = seen_at.replace(tzinfo=timezone.utc)
+            except ValueError:
+                seen_at = None
         messages.append(
             ChatMessage(
                 role=item["role"],
                 text=item["text"],
                 created_at=created_at,
+                read_state=read_state,
+                seen_at=seen_at,
             )
         )
     return messages

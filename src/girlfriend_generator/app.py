@@ -1102,6 +1102,16 @@ def _show_ending(
     if action == "continue_silent":
         _apply_relationship_state(session, next_state)
         session.continue_after_ending(kind)
+        if kind == "success":
+            try:
+                from . import companion_state
+
+                companion_state.mark_cleared(
+                    persona_name=persona.name,
+                    milestone="lover",
+                )
+            except Exception:
+                pass
         session.add_system_message(
             f"[새 관계] {_localized_relationship_label(next_state.label)} — {next_state.summary}\n[상황] {next_state.situation}"
         )
@@ -1164,6 +1174,16 @@ def _show_ending(
         }
     _apply_relationship_state(session, next_state)
     session.continue_after_ending(kind)
+    if kind == "success":
+        try:
+            from . import companion_state
+
+            companion_state.mark_cleared(
+                persona_name=persona.name,
+                milestone="lover",
+            )
+        except Exception:
+            pass
     console.clear()
     title = data.get("report_title", "END")
     rating = data.get("rating", "?")

@@ -8,6 +8,7 @@ def test_discover_personas_lists_bundled_files() -> None:
     names = [path.name for path in persona_paths]
     assert "wonyoung-idol.json" in names
     assert "dua-international.json" in names
+    assert "mina-saju-cafe.json" in names
 
 
 def test_load_persona_validates_adult_and_nudges() -> None:
@@ -19,3 +20,12 @@ def test_load_persona_validates_adult_and_nudges() -> None:
 
 def test_discover_personas_is_empty_for_missing_directory(tmp_path: Path) -> None:
     assert discover_personas(tmp_path / "missing") == []
+
+
+def test_load_saju_persona_keeps_scenario_and_birth_info_hook() -> None:
+    persona = load_persona(Path("personas/mina-saju-cafe.json"))
+
+    assert persona.scenario == "saju"
+    assert "생년월일" in persona.greeting
+    assert "태어난 시간" in persona.greeting
+    assert any("운세" in template or "생년월일" in template for template in persona.nudge_policy.templates)

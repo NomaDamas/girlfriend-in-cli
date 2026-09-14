@@ -113,6 +113,17 @@ def test_bootstrap_greeting_uses_configured_language(monkeypatch) -> None:
     assert "wanted to text you first" in session.messages[0].text
 
 
+def test_saju_persona_bootstrap_naturally_asks_for_birth_info() -> None:
+    persona = load_persona(Path("personas/mina-saju-cafe.json"))
+    session = ConversationSession(persona=persona)
+
+    session.bootstrap()
+
+    assert session.messages[0].role == "assistant"
+    assert "생년월일" in session.messages[0].text
+    assert "태어난 시간" in session.messages[0].text
+
+
 def test_affection_delta_dampens_generic_repeated_flattery() -> None:
     persona = load_persona(Path("personas/wonyoung-idol.json"))
     session = ConversationSession(persona=persona)

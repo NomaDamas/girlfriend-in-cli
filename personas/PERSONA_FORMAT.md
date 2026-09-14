@@ -28,6 +28,7 @@ Create your own persona in a single JSON file. Share it as a Gist, a URL, or jus
   "relationship_mode": "crush",
   "difficulty": "normal",
   "special_mode": "",
+  "scenario": "",
 
   "background": "페르소나의 배경, 직업, 살아온 맥락 (필수)",
   "situation": "현재 사용자와의 관계 상황 (필수)",
@@ -80,6 +81,11 @@ Create your own persona in a single JSON file. Share it as a Gist, a URL, or jus
 
 - `""` (기본): 일반
 - `"yandere"`: 집착형, burst 메시지 자동
+
+## Scenarios
+
+- `""` (기본): 일반
+- `"saju"`: 사주/궁합/운명 framing을 대화 훅으로 사용. 재미용으로만 말하고 확정적 예언은 하지 않음
 
 ## How to Share
 

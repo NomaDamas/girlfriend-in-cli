@@ -16,6 +16,7 @@ from girlfriend_generator.app import (
     _show_scrollable_text_panel,
     _show_ending,
     _sync_provider_trace,
+    _with_translation_subtitle,
     run_chat_app,
 )
 from girlfriend_generator.engine import ConversationSession
@@ -122,6 +123,41 @@ def test_finish_job_turns_voice_transcript_into_reply_job() -> None:
     assert next_job.kind == "reply"
     assert next_delivery is None
     assert status == "voice transcript captured"
+
+
+def test_finish_job_adds_foreign_persona_translation_subtitle() -> None:
+    class PreviousJob:
+        kind = "reply"
+
+    persona = _load_test_persona()
+    session = ConversationSession(persona=persona)
+    session.bootstrap()
+    session.add_user_message("무슨 뜻이야?")
+
+    next_job, next_delivery, status = _finish_job(
+        session=session,
+        persona=persona,
+        provider=object(),
+        result=(True, ProviderReply(
+            text="je pensais a toi",
+            translated_text="네 생각하고 있었어",
+            typing_seconds=0.0,
+            trace_note="test",
+        )),
+        previous_job=PreviousJob(),
+        previous_delivery=None,
+        previous_status="assistant is thinking...",
+    )
+
+    assert next_job is None
+    assert next_delivery is not None
+    assert next_delivery.text == "je pensais a toi\n(네 생각하고 있었어)"
+    assert status == "답장을 준비 중이에요."
+
+
+def test_with_translation_subtitle_omits_empty_or_duplicate_translation() -> None:
+    assert _with_translation_subtitle("hello", "") == "hello"
+    assert _with_translation_subtitle("hello", "hello") == "hello"
 
 
 def test_export_command_writes_local_transcript_files(tmp_path: Path) -> None:

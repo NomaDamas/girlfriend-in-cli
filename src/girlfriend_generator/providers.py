@@ -371,6 +371,7 @@ class OpenAIProvider:
             burst_messages=burst_list,
             next_proactive_seconds=proactive_s,
             photo_prompt=str(parsed.get("photo_prompt") or ""),
+            translated_text=str(parsed.get("translated_reply") or ""),
         )
 
     def generate_initiative(
@@ -506,6 +507,7 @@ class AnthropicProvider:
             coach_charm_type=str(parsed.get("user_charm_type", "")),
             coach_charm_feedback=str(parsed.get("user_charm_feedback", "")),
             photo_prompt=str(parsed.get("photo_prompt") or ""),
+            translated_text=str(parsed.get("translated_reply") or ""),
         )
 
     def generate_initiative(
@@ -663,6 +665,7 @@ def _build_system_prompt(
     nudge_ctx = ""
     if nudge_examples:
         nudge_ctx = f"Silence nudge examples for this stage: {' | '.join(nudge_examples[:3])}. "
+    subtitle_ctx = _foreign_subtitle_instructions(persona, language)
 
     return (
         f"너는 {persona.name}이라는 페르소나를 가진 AI 컴패니언이야. "
@@ -710,7 +713,7 @@ def _build_system_prompt(
         (f"\n=== SPECIAL MODE: {special_mode} ===\n" + _special_mode_instructions(special_mode) if special_mode else "") +
         "\nRESPONSE FORMAT — respond with ONLY valid JSON (no markdown, no explanation):\n"
         "{\n"
-        '  "reply": "your chat message in the target language",\n'
+        f"{subtitle_ctx}"
         '  "affection_delta": INTEGER — how their message made you feel. BE DRAMATIC:\n'
         "       +8 to +15: deeply touched (진심어린 고백, 세심한 배려, 특별한 순간)\n"
         "       +3 to +7: warm (장난+애정, 관심 표현, 재미있는 대화)\n"
@@ -834,6 +837,20 @@ def _language_instructions(language: str) -> str:
     return langs.get(language, langs["ko"]) + "\n"
 
 
+def _foreign_subtitle_instructions(persona: Persona, language: str) -> str:
+    persona_language = (persona.language or "ko").strip().lower()
+    target_language = (language or "ko").strip().lower()
+    if not persona_language or persona_language == target_language:
+        return (
+            '  "reply": "your chat message in the target language",\n'
+            '  "translated_reply": "",\n'
+        )
+    return (
+        f'  "reply": "your chat message in the persona language ({persona_language})",\n'
+        f'  "translated_reply": "natural translation of reply in the user language ({target_language})",\n'
+    )
+
+
 def _build_user_prompt(history: list[ChatMessage], user_text: str) -> str:
     transcript = "\n".join(f"{message.role}: {message.text}" for message in history[-8:])
     return f"Recent transcript:\n{transcript}\n\nLatest user text:\n{user_text}"
@@ -852,6 +869,7 @@ def parse_llm_json_response(text: str) -> dict:
         # Fallback: extract just the reply text
         return {
             "reply": text,
+            "translated_reply": "",
             "affection_delta": 0,
             "mood": "neutral",
             "memory_update": "",
